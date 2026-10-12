@@ -1,5 +1,6 @@
 import { config, mockMode } from "../config.js";
 import { normalizePhone } from "../privacy.js";
+import { log } from "../log.js";
 
 // WhatsApp Cloud API (Meta). Webhook: GET /webhooks/whatsapp (verification), POST (messages).
 // Docs: https://developers.facebook.com/docs/whatsapp/cloud-api
@@ -8,7 +9,7 @@ const graph = () => `https://graph.facebook.com/${config.whatsapp.graphVersion}`
 
 export async function sendWhatsAppText(to: string, body: string): Promise<string> {
   if (mockMode.whatsapp()) {
-    console.log(`[whatsapp:mock] -> ${to.slice(0, 6)}***: ${body.replace(/\n/g, " | ")}`);
+    log.info({ channel: "whatsapp", mock: true, toPrefix: normalizePhone(to).slice(0, 6) }, `[whatsapp:mock] ${body.replace(/\n/g, " | ")}`);
     return "mock";
   }
   const res = await fetch(`${graph()}/${config.whatsapp.phoneNumberId}/messages`, {
@@ -22,10 +23,10 @@ export async function sendWhatsAppText(to: string, body: string): Promise<string
 }
 
 export async function downloadWhatsAppMedia(mediaId: string): Promise<{ audio: Buffer; mimeType: string }> {
-  const meta = await fetch(`${graph()}/${mediaId}`, { headers: { authorization: `Bearer ${config.whatsapp.token}` } });
+  const meta = await fetch(`${graph()}/${mediaId}`, { headers: { authorization: `Bearer ${config.whatsapp.token}` }, signal: AbortSignal.timeout(15000) });
   if (!meta.ok) throw new Error(`WhatsApp media lookup HTTP ${meta.status}`);
   const info: any = await meta.json();
-  const file = await fetch(info.url, { headers: { authorization: `Bearer ${config.whatsapp.token}` } });
+  const file = await fetch(info.url, { headers: { authorization: `Bearer ${config.whatsapp.token}` }, signal: AbortSignal.timeout(30000) });
   if (!file.ok) throw new Error(`WhatsApp media download HTTP ${file.status}`);
   return { audio: Buffer.from(await file.arrayBuffer()), mimeType: info.mime_type ?? "audio/ogg" };
 }

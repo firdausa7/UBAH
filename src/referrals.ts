@@ -1,6 +1,7 @@
 import type { Db } from "./db.js";
 import { config } from "./config.js";
 import { newPassCode } from "./privacy.js";
+import { enqueue } from "./jobs/queue.js";
 
 export const SERVICES: Record<string, string> = {
   pregnancy_test: "Pregnancy test",
@@ -66,7 +67,9 @@ export async function issuePass(db: Db, userId: number, services: string[], urge
     [code, userId, services, clinic.id, urgent, expiresAt.toISOString()],
   );
   const dueAt = new Date(Date.now() + config.checkinDelayHours * 3600e3);
-  await db.query(`INSERT INTO checkins (pass_code, user_id, due_at) VALUES ($1,$2,$3)`, [code, userId, dueAt.toISOString()]);
+  const [ci] = await db.query<{ id: number }>(`INSERT INTO checkins (pass_code, user_id, due_at) VALUES ($1,$2,$3) RETURNING id`, [code, userId, dueAt.toISOString()]);
+  // The day-3 check-in is a durable job: it survives restarts and runs on any instance.
+  await enqueue(db, "checkin.send", { checkinId: ci.id }, { runAt: dueAt, uniqueKey: `checkin:${ci.id}` });
   return { code, clinic, expiresAt };
 }
 

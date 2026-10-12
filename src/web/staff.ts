@@ -1,9 +1,12 @@
 import { Router, type Request } from "express";
 import type { Db } from "../db.js";
 import { config } from "../config.js";
-import { verifyPassword } from "../privacy.js";
-import { requireRole, setSession, clearSession, staffOf, type Staff } from "./auth.js";
+import { requireRole, staffOf } from "./auth.js";
+import { csrfField } from "../security/csrf.js";
+import { auditReq } from "../audit.js";
+import { HOME } from "./login.js";
 import { page, esc, h1 } from "./html.js";
+import { nav } from "./nav.js";
 import { checkPass, redeemPass, SERVICES } from "../referrals.js";
 import { sendToUser, type UserRow } from "../channels/outbound.js";
 import { sendDueCheckins } from "../engine.js";
@@ -23,55 +26,14 @@ const ago = (d: string) => {
   return m < 60 ? `${m} min ago` : m < 1440 ? `${Math.round(m / 60)} h ago` : `${Math.round(m / 1440)} d ago`;
 };
 
-function nav(s: Staff): string {
-  const links: Array<[string, string, string[]]> = [
-    ["/staff/inbox", "Inbox", ["admin", "nurse", "dada"]],
-    ["/staff/label", "Label messages", ["admin", "nurse", "dada"]],
-    ["/staff/clinic", "Check a pass", ["admin", "clinic"]],
-    ["/staff/dashboard", "Dashboard", ["admin", "nurse", "partner"]],
-  ];
-  return (
-    links.filter(([, , roles]) => roles.includes(s.role)).map(([href, label]) => `<a href="${href}">${label}</a>`).join("") +
-    `<form method="post" action="/staff/logout" style="display:inline"><button class="secondary" style="min-height:36px;padding:0 16px">Log out</button></form>`
-  );
-}
-
-const home: Record<string, string> = { admin: "/staff/inbox", nurse: "/staff/inbox", dada: "/staff/inbox", clinic: "/staff/clinic", partner: "/staff/dashboard" };
-
 export function staffRouter(db: Db): Router {
   const r = Router();
   const careTeam = requireRole(db, ["admin", "nurse", "dada"]);
 
-  // ---- Login ----
-  r.get("/login", (req, res) => {
-    const err = req.query.error ? `<div class="notice">Wrong login or password.</div>` : "";
-    res.send(
-      page(
-        "Staff login",
-        `<div class="card" style="max-width:440px;margin:40px auto;padding:28px">${h1("Staff", "login", "Ubah team")}<p class="muted">For Dadas, nurses, clinics and partners. Girls never need an account.</p>${err}
-<form method="post" action="/staff/login"><input type="hidden" name="next" value="${esc(req.query.next ?? "")}">
-<label for="login">Login</label><input id="login" name="login" autocomplete="username" required>
-<label for="password">Password</label><input id="password" name="password" type="password" autocomplete="current-password" required>
-<p style="margin-top:20px"><button class="accent" style="width:100%">Log in</button></p></form></div>`,
-      ),
-    );
-  });
-  r.post("/login", async (req, res) => {
-    const [s] = await db.query(`SELECT id, role, password_hash FROM staff WHERE login = $1 AND active`, [String(req.body.login ?? "").trim()]);
-    if (!s || !verifyPassword(String(req.body.password ?? ""), s.password_hash)) return res.redirect("/staff/login?error=1");
-    setSession(res, s.id);
-    const next = String(req.body.next ?? "");
-    res.redirect(next.startsWith("/staff/") ? next : home[s.role]);
-  });
-  r.post("/logout", (_req, res) => {
-    clearSession(res);
-    res.redirect("/staff/login");
-  });
-  r.get("/", requireRole(db, ["admin", "nurse", "dada", "clinic", "partner"]), (req, res) => res.redirect(home[staffOf(req).role]));
+  r.get("/", requireRole(db, ["admin", "nurse", "dada", "clinic", "partner"]), (req, res) => res.redirect(HOME[staffOf(req).role]));
 
   // ---- Dada & nurse inbox ----
   r.get("/inbox", careTeam, async (req, res) => {
-    const s = staffOf(req);
     const status = req.query.status === "handled" ? "handled" : "open";
     const cases = await db.query(
       `SELECT c.*, u.anon_id, u.language, u.channel FROM cases c JOIN users u ON u.id = c.user_id
@@ -88,15 +50,17 @@ export function staffRouter(db: Db): Router {
       page(
         "Inbox",
         `${h1("Dada", "inbox", "Care team")}<p class="lead">Urgent cases come first. The AI drafts; a Dada or nurse always decides what is sent.</p><div class="row pills" style="margin-bottom:18px"><a class="btn ${status === "open" ? "" : "secondary"}" href="/staff/inbox">Open</a><a class="btn ${status === "handled" ? "" : "secondary"}" href="/staff/inbox?status=handled">Handled</a></div>${cards || `<div class="card">No ${status} cases.</div>`}`,
-        nav(s),
+        nav(req),
       ),
     );
   });
 
   r.get("/cases/:id", careTeam, async (req, res) => {
-    const s = staffOf(req);
-    const [c] = await db.query(`SELECT c.*, u.anon_id, u.language, u.channel FROM cases c JOIN users u ON u.id = c.user_id WHERE c.id = $1`, [req.params.id]);
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id)) return res.status(404).send("Case not found");
+    const [c] = await db.query(`SELECT c.*, u.anon_id, u.language, u.channel FROM cases c JOIN users u ON u.id = c.user_id WHERE c.id = $1`, [id]);
     if (!c) return res.status(404).send("Case not found");
+    await auditReq(db, req, { action: "case.view", targetType: "case", targetId: c.id });
     const msgs = await db.query(`SELECT direction, kind, body, created_at FROM messages WHERE user_id = $1 ORDER BY id DESC LIMIT 30`, [c.user_id]);
     const thread = msgs
       .reverse()
@@ -108,25 +72,31 @@ export function staffRouter(db: Db): Router {
         `<p><a href="/staff/inbox">← Inbox</a></p><div class="card"><span class="tag ${c.urgent ? "urgent" : ""}">${esc(REASON[c.reason] ?? c.reason)}</span>
 <h1 style="margin-top:10px"><em>Girl</em> ${esc(c.anon_id)}</h1><p class="muted">${esc(c.language ?? "?")} · ${esc(c.channel)} · opened ${ago(c.created_at)} · ${esc(c.status)}</p></div>
 <div class="card"><h2>Conversation</h2>${thread}</div>
-<div class="card"><h2>Reply</h2><form method="post" action="/staff/cases/${c.id}/reply">
+<div class="card"><h2>Reply</h2><form method="post" action="/staff/cases/${c.id}/reply">${csrfField(req)}
 <label for="body">Message (AI draft — check before sending)</label><textarea id="body" name="body" rows="4" required>${esc(c.draft_reply)}</textarea>
 <label class="inline"><input type="checkbox" name="handled" value="1"> Mark as handled after sending</label>
 <p><button class="accent">Send to girl ${esc(c.anon_id)}</button></p></form></div>`,
-        nav(s),
+        nav(req),
       ),
     );
   });
 
   r.post("/cases/:id/reply", careTeam, async (req, res) => {
     const s = staffOf(req);
-    const [c] = await db.query(`SELECT * FROM cases WHERE id = $1`, [req.params.id]);
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id)) return res.status(404).send("Case not found");
+    const [c] = await db.query(`SELECT * FROM cases WHERE id = $1`, [id]);
     if (!c) return res.status(404).send("Case not found");
     const [user] = await db.query<UserRow>(`SELECT * FROM users WHERE id = $1`, [c.user_id]);
-    const body = String(req.body.body ?? "").trim();
-    if (user && body) await sendToUser(db, user, body);
-    await db.query(`UPDATE cases SET first_reply_at = COALESCE(first_reply_at, now()), assigned_to = COALESCE(assigned_to, $2) WHERE id = $1`, [c.id, s.id]);
+    const body = String(req.body.body ?? "").trim().slice(0, 1600);
+    if (user && body) {
+      const messageId = await sendToUser(db, user, body, null, s.id);
+      await auditReq(db, req, { action: "case.reply", targetType: "case", targetId: c.id, details: { messageId } });
+      await db.query(`UPDATE cases SET first_reply_at = COALESCE(first_reply_at, now()), assigned_to = COALESCE(assigned_to, $2) WHERE id = $1`, [c.id, s.id]);
+    }
     if (req.body.handled) {
-      await db.query(`UPDATE cases SET status = 'handled', handled_at = now() WHERE id = $1 AND status = 'open'`, [c.id]);
+      const done = await db.query(`UPDATE cases SET status = 'handled', handled_at = now() WHERE id = $1 AND status = 'open' RETURNING id`, [c.id]);
+      if (done.length) await auditReq(db, req, { action: "case.handled", targetType: "case", targetId: c.id });
       if (s.role === "dada" && config.dadaPayPerCaseKes > 0) {
         await db.query(`INSERT INTO dada_payouts (staff_id, case_id, amount_kes) VALUES ($1,$2,$3)`, [s.id, c.id, config.dadaPayPerCaseKes]);
       }
@@ -136,30 +106,36 @@ export function staffRouter(db: Db): Router {
 
   // ---- Clinic desk: check a pass (sees services only, never who she is) ----
   const clinicTeam = requireRole(db, ["admin", "clinic"]);
-  const clinicPage = (s: Staff, result = "") =>
+  const clinicPage = (req: Request, result = "") =>
     page(
       "Check a pass",
-      `${h1("Check", "a referral pass", "Clinic desk")}<p class="lead">Type the code she shows you. You will see the services she needs, never her name.</p><div class="card"><form method="post" action="/staff/clinic/check"><label for="code">Pass code</label>
+      `${h1("Check", "a referral pass", "Clinic desk")}<p class="lead">Type the code she shows you. You will see the services she needs, never her name.</p><div class="card"><form method="post" action="/staff/clinic/check">${csrfField(req)}<label for="code">Pass code</label>
 <input id="code" name="code" placeholder="UB-7K42" autocomplete="off" required style="text-transform:uppercase;font-size:22px;letter-spacing:2px">
 <p><button class="accent">Check pass</button></p></form></div>${result}`,
-      nav(s),
+      nav(req),
     );
-  r.get("/clinic", clinicTeam, (req, res) => res.send(clinicPage(staffOf(req))));
+  r.get("/clinic", clinicTeam, (req, res) => res.send(clinicPage(req)));
   r.post("/clinic/check", clinicTeam, async (req, res) => {
     const s = staffOf(req);
-    const chk = await checkPass(db, String(req.body.code ?? ""), s.clinic_id);
+    const chk = await checkPass(db, String(req.body.code ?? "").slice(0, 20), s.clinic_id);
+    await auditReq(db, req, { action: "pass.check", targetType: "pass", targetId: chk.code ?? String(req.body.code ?? "").slice(0, 20), details: { valid: chk.valid } });
     const result = chk.valid
       ? `<div class="card"><span class="tag ok">Valid pass</span>${chk.urgent ? ` <span class="tag urgent">Urgent — see today</span>` : ""}
 <h2 style="margin-top:10px">${esc(chk.code)}</h2><p>She needs: <strong>${chk.services!.map((x) => esc(SERVICES[x] ?? x)).join(", ")}</strong></p>
 <p class="muted">Valid until ${new Date(chk.expiresAt!).toDateString()}. ${chk.alreadyRedeemed ? "Already recorded as seen." : ""} No name is needed.</p>
-${s.clinic_id ? `<form method="post" action="/staff/clinic/redeem"><input type="hidden" name="code" value="${esc(chk.code)}"><button>Record that she was seen here</button></form>` : ""}</div>`
+${s.clinic_id ? `<form method="post" action="/staff/clinic/redeem">${csrfField(req)}<input type="hidden" name="code" value="${esc(chk.code)}"><button>Record that she was seen here</button></form>` : ""}</div>`
       : `<div class="card"><span class="tag urgent">Not valid</span><p>${esc(chk.reason)}</p></div>`;
-    res.send(clinicPage(s, result));
+    res.send(clinicPage(req, result));
   });
   r.post("/clinic/redeem", clinicTeam, async (req, res) => {
     const s = staffOf(req);
-    if (s.clinic_id) await redeemPass(db, String(req.body.code), s.clinic_id);
-    res.send(clinicPage(s, `<div class="card"><span class="tag ok">Recorded</span><p>Thank you. Ubah will ask her about her visit in a few days.</p></div>`));
+    const code = String(req.body.code ?? "").slice(0, 20);
+    if (!s.clinic_id) return res.send(clinicPage(req, `<div class="card"><span class="tag urgent">Not recorded</span><p>Your account isn't linked to a clinic, so visits can't be recorded from it.</p></div>`));
+    const chk = await checkPass(db, code, s.clinic_id);
+    if (!chk.valid) return res.send(clinicPage(req, `<div class="card"><span class="tag urgent">Not valid</span><p>${esc(chk.reason)}</p></div>`));
+    await redeemPass(db, chk.code!, s.clinic_id);
+    await auditReq(db, req, { action: "pass.redeem", targetType: "pass", targetId: chk.code, details: { clinicId: s.clinic_id } });
+    res.send(clinicPage(req, `<div class="card"><span class="tag ok">Recorded</span><p>Thank you. Ubah will ask her about her visit in a few days.</p></div>`));
   });
 
   // ---- Partner dashboard ----
@@ -204,15 +180,16 @@ ${tile("Urgent handoffs", String(st.urgentCases), st.medianUrgentReplyMin == nul
 <p class="muted">${st.labelledMessages} messages labelled by nurses and Dadas so far · ${st.codedTermMessages} messages used coded words · ${st.openCases} open cases${
           st.dadaPayoutsPendingKes ? ` · KES ${st.dadaPayoutsPendingKes} Dada pay pending` : ""
         }</p></div></div>
-${s.role === "admin" ? `<div class="card"><h2>Admin</h2><form method="post" action="/staff/admin/run-checkins"><button class="secondary">Send due check-ins now</button></form></div>` : ""}`,
-        nav(s),
+${s.role === "admin" ? `<div class="card"><h2>Admin</h2><form method="post" action="/staff/admin/run-checkins">${csrfField(req)}<button class="secondary">Send due check-ins now</button></form>${req.query.sent != null ? `<p class="muted" role="status">${Number(req.query.sent)} check-in(s) sent.</p>` : ""}</div>` : ""}`,
+        nav(req),
       ),
     );
   });
 
-  r.post("/admin/run-checkins", requireRole(db, ["admin"]), async (_req, res) => {
-    await sendDueCheckins(db);
-    res.redirect("/staff/dashboard");
+  r.post("/admin/run-checkins", requireRole(db, ["admin"]), async (req, res) => {
+    const sent = await sendDueCheckins(db);
+    await auditReq(db, req, { action: "checkins.run", details: { sent } });
+    res.redirect(`/staff/dashboard?sent=${sent}`);
   });
 
   // ---- Labelling: nurses and Dadas create the training data for Ubah's own models ----
@@ -230,15 +207,17 @@ ${s.role === "admin" ? `<div class="card"><h2>Admin</h2><form method="post" acti
       opts.map((o) => `<label class="inline"><input type="radio" name="${name}" value="${o}" ${o === predicted ? "checked" : ""} required> ${esc(o.replace("_", " "))}</label>`).join("");
     const body = m
       ? `<div class="card"><p class="muted">Anonymous message · ${esc(m.language ?? "?")}</p><p style="font-size:20px">${esc(m.body)}</p></div>
-<form method="post" action="/staff/label" class="card"><input type="hidden" name="message_id" value="${m.id}">
+<form method="post" action="/staff/label" class="card">${csrfField(req)}<input type="hidden" name="message_id" value="${m.id}">
 <h2>Is this urgent?</h2>${radios("danger", DANGER, m.danger)}<h2 style="margin-top:14px">Topic</h2>${radios("topic", TOPICS, m.topic)}
 <p class="muted">The model's guess is pre-selected. Change it if it's wrong — that is what teaches the model.</p><p><button class="accent">Save and next</button></p></form>`
       : `<div class="card">Nothing left to label. Thank you!</div>`;
-    res.send(page("Label messages", `${h1("Label", "messages", "Training data")}<p class="lead">You have labelled ${n}. Your labels train Ubah's danger-sign and topic models.</p>${body}`, nav(s)));
+    res.send(page("Label messages", `${h1("Label", "messages", "Training data")}<p class="lead">You have labelled ${n}. Your labels train Ubah's danger-sign and topic models.</p>${body}`, nav(req)));
   });
   r.post("/label", careTeam, async (req: Request, res) => {
     const s = staffOf(req);
     const id = Number(req.body.message_id);
+    if (!Number.isInteger(id)) return res.redirect("/staff/label");
+    const saved: Record<string, string> = {};
     for (const task of ["danger", "topic"] as const) {
       const v = String(req.body[task] ?? "");
       if ((task === "danger" ? DANGER : TOPICS).includes(v)) {
@@ -246,9 +225,77 @@ ${s.role === "admin" ? `<div class="card"><h2>Admin</h2><form method="post" acti
           `INSERT INTO labels (message_id, task, label, labeled_by) VALUES ($1,$2,$3,$4) ON CONFLICT (message_id, task, labeled_by) DO UPDATE SET label = EXCLUDED.label`,
           [id, task, v, s.id],
         );
+        saved[task] = v;
       }
     }
+    if (Object.keys(saved).length) await auditReq(db, req, { action: "label.save", targetType: "message", targetId: id, details: saved });
     res.redirect("/staff/label");
+  });
+
+  // ---- Audit log: who viewed which case, who sent what, who changed what ----
+  r.get("/audit", requireRole(db, ["admin"]), async (req, res) => {
+    const PAGE = 50;
+    const pageNo = Math.max(1, Math.min(10_000, Number(req.query.page) || 1));
+    const f = {
+      staff: String(req.query.staff ?? "").trim().slice(0, 100),
+      action: String(req.query.action ?? "").trim().slice(0, 60),
+      target: String(req.query.target ?? "").trim().slice(0, 60),
+      from: /^\d{4}-\d{2}-\d{2}$/.test(String(req.query.from ?? "")) ? String(req.query.from) : "",
+      to: /^\d{4}-\d{2}-\d{2}$/.test(String(req.query.to ?? "")) ? String(req.query.to) : "",
+    };
+    const where: string[] = [];
+    const params: unknown[] = [];
+    const add = (sql: string, v: unknown) => {
+      params.push(v);
+      where.push(sql.replace("?", `$${params.length}`));
+    };
+    if (f.staff) add("staff_login = ?", f.staff);
+    if (f.action) add("action LIKE ?", `${f.action.replace(/[%_]/g, "")}%`);
+    if (f.target) {
+      const [type, id] = f.target.split(":");
+      add("target_type = ?", type);
+      if (id) add("target_id = ?", id);
+    }
+    if (f.from) add("at >= ?::date", f.from);
+    if (f.to) add("at < ?::date + 1", f.to);
+    const whereSql = where.length ? `WHERE ${where.join(" AND ")}` : "";
+    const rows = await db.query(
+      `SELECT id, at, staff_login, action, target_type, target_id, details, ip FROM audit_log ${whereSql} ORDER BY id DESC LIMIT ${PAGE + 1} OFFSET ${(pageNo - 1) * PAGE}`,
+      params,
+    );
+    const more = rows.length > PAGE;
+    const actions = await db.query<{ action: string }>(`SELECT DISTINCT action FROM audit_log ORDER BY action`);
+    await auditReq(db, req, { action: "audit.view", details: f });
+    const qs = (p: number) => `?${new URLSearchParams({ ...f, page: String(p) })}`;
+    const target = (r: any) => {
+      if (!r.target_type) return "";
+      const label = `${esc(r.target_type)} ${esc(r.target_id ?? "")}`;
+      return r.target_type === "case" ? `<a href="/staff/cases/${esc(r.target_id)}">${label}</a>` : label;
+    };
+    const table = rows
+      .slice(0, PAGE)
+      .map(
+        (r) => `<tr><td style="white-space:nowrap">${esc(new Date(r.at).toISOString().replace("T", " ").slice(0, 19))} UTC</td><td>${esc(r.staff_login ?? "—")}</td><td><span class="tag">${esc(r.action)}</span></td>
+<td>${target(r)}</td><td class="muted">${esc(Object.keys(r.details ?? {}).length ? JSON.stringify(r.details) : "")}</td><td class="muted">${esc(r.ip ?? "")}</td></tr>`,
+      )
+      .join("");
+    res.send(
+      page(
+        "Audit log",
+        `${h1("Audit", "log", "Accountability")}<p class="lead">Every login, case view, reply, pass check and change is recorded here and cannot be edited or deleted. Message text and phone numbers are never stored in the log.</p>
+<form method="get" action="/staff/audit" class="card"><div class="grid" style="margin:0">
+<div><label for="f-staff">Staff login</label><input id="f-staff" name="staff" value="${esc(f.staff)}"></div>
+<div><label for="f-action">Action</label><select id="f-action" name="action"><option value="">Any</option>${actions.map((a) => `<option ${a.action === f.action ? "selected" : ""}>${esc(a.action)}</option>`).join("")}</select></div>
+<div><label for="f-target">Target (e.g. case:12)</label><input id="f-target" name="target" value="${esc(f.target)}"></div>
+<div><label for="f-from">From</label><input id="f-from" name="from" type="date" value="${esc(f.from)}"></div>
+<div><label for="f-to">To</label><input id="f-to" name="to" type="date" value="${esc(f.to)}"></div></div>
+<p class="row"><button>Filter</button><a class="btn secondary" href="/staff/audit">Clear</a></p></form>
+<div class="card"><div class="scroll"><table><thead><tr><th>When</th><th>Who</th><th>Action</th><th>Target</th><th>Details</th><th>IP</th></tr></thead>
+<tbody>${table || `<tr><td colspan="6">No entries match.</td></tr>`}</tbody></table></div>
+<p class="row">${pageNo > 1 ? `<a class="btn secondary" href="${qs(pageNo - 1)}">Newer</a>` : ""}${more ? `<a class="btn secondary" href="${qs(pageNo + 1)}">Older</a>` : ""}</p></div>`,
+        nav(req),
+      ),
+    );
   });
 
   return r;

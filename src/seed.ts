@@ -1,5 +1,6 @@
 import { fileURLToPath } from "node:url";
 import type { Db } from "./db.js";
+import { config } from "./config.js";
 import { hashPassword } from "./privacy.js";
 
 // Demo data for local testing. Clinic names are placeholders — replace with real,
@@ -18,18 +19,20 @@ export async function seedDemo(db: Db, opts: { staffPassword?: string } = {}) {
       await db.query(`INSERT INTO clinics (name, area, services, hours, verified) VALUES ($1,$2,$3,$4,$5)`, [c.name, c.area, c.services, c.hours, c.verified]);
     }
   }
-  const pw = opts.staffPassword ?? process.env.DEMO_STAFF_PASSWORD ?? "change-me-now";
-  const staff: Array<[string, string, string, number | null]> = [
-    ["Admin", "admin", "admin", null],
-    ["Nurse on call", "nurse", "nurse", null],
-    ["Dada Demo", "dada", "dada", null],
-    ["Health post A desk", "clinic-a", "clinic", 1],
-    ["Partner viewer", "partner", "partner", null],
+  if (config.production) throw new Error("Demo data is never seeded in production");
+  const pw = opts.staffPassword ?? config.demoStaffPassword;
+  // The demo Dada gets a fake phone so her SMS login code works in mock mode (it appears in the log).
+  const staff: Array<[string, string, string, number | null, string | null]> = [
+    ["Admin", "admin", "admin", null, null],
+    ["Nurse on call", "nurse", "nurse", null, null],
+    ["Dada Demo", "dada", "dada", null, "+254700000001"],
+    ["Health post A desk", "clinic-a", "clinic", 1, null],
+    ["Partner viewer", "partner", "partner", null, null],
   ];
-  for (const [name, login, role, clinicId] of staff) {
+  for (const [name, login, role, clinicId, phone] of staff) {
     await db.query(
-      `INSERT INTO staff (name, role, login, password_hash, clinic_id) VALUES ($1,$2,$3,$4,$5) ON CONFLICT (login) DO NOTHING`,
-      [name, role, login, hashPassword(pw), clinicId],
+      `INSERT INTO staff (name, role, login, password_hash, clinic_id, phone) VALUES ($1,$2,$3,$4,$5,$6) ON CONFLICT (login) DO NOTHING`,
+      [name, role, login, hashPassword(pw), clinicId, phone],
     );
   }
 }
@@ -40,6 +43,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   await seedDemo(db);
   console.log("Seeded demo clinics and staff logins: admin, nurse, dada, clinic-a, partner");
   console.log(`Password: ${process.env.DEMO_STAFF_PASSWORD ? "(from DEMO_STAFF_PASSWORD)" : "change-me-now"} — change it before sharing.`);
+  console.log("Admin, nurse and partner set up an authenticator app at first login; the Dada's SMS code appears in the server log (mock mode).");
   await db.close();
   process.exit(0);
 }

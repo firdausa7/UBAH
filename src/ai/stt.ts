@@ -1,4 +1,5 @@
 import { config, mockMode } from "../config.js";
+import { log } from "../log.js";
 
 // Speech-to-text for voice notes. Any OpenAI-compatible /audio/transcriptions endpoint:
 // OpenAI Whisper, or a self-hosted Whisper / Meta MMS model fine-tuned on Somali voice notes.
@@ -32,7 +33,7 @@ export async function transcribe(audio: Buffer, mimeType: string, lang?: string 
     const text = String(json.text ?? "").trim();
     return { text, ok: text.length > 0 };
   } catch (err) {
-    console.error("[stt] failed:", (err as Error).message);
+    log.warn({ err: (err as Error).message }, "speech-to-text failed");
     return { text: "", ok: false };
   }
 }

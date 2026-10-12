@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll } from "vitest";
 import request from "supertest";
-import { freshDb, girl } from "./helpers.js";
+import { freshDb, girl, staffClient, csrfFrom, type StaffClient } from "./helpers.js";
 import { createApp } from "../src/server.js";
 import { trainAll } from "../src/ml/train.js";
 import { reloadModels } from "../src/ml/models.js";
@@ -10,17 +10,18 @@ import type { Db } from "../src/db.js";
 let db: Db;
 let app: ReturnType<typeof createApp>;
 
+// One signed-in client per account (authenticator codes can't be reused within 30 seconds).
+const clients = new Map<string, StaffClient>();
 async function login(user: string) {
-  const res = await request(app).post("/staff/login").type("form").send({ login: user, password: "test-pass" });
-  expect(res.status).toBe(302);
-  return res.headers["set-cookie"][0].split(";")[0];
+  if (!clients.has(user)) clients.set(user, await staffClient(app, db, user));
+  return clients.get(user)!;
 }
 
 beforeAll(async () => {
   trainAll(() => {});
   reloadModels();
   db = await freshDb();
-  app = createApp(db);
+  app = createApp(db, { loginPerMin: 10_000 });
 });
 
 describe("channels", () => {
@@ -50,12 +51,14 @@ describe("staff pages", () => {
   it("blocks pages without login and by role", async () => {
     expect((await request(app).get("/staff/inbox")).status).toBe(302);
     const partner = await login("partner");
-    expect((await request(app).get("/staff/inbox").set("Cookie", partner)).status).toBe(403);
-    expect((await request(app).get("/staff/dashboard").set("Cookie", partner)).status).toBe(200);
+    expect((await partner.get("/staff/inbox")).status).toBe(403);
+    expect((await partner.get("/staff/dashboard")).status).toBe(200);
   });
 
   it("rejects a wrong password", async () => {
-    const res = await request(app).post("/staff/login").type("form").send({ login: "nurse", password: "nope" });
+    const agent = request.agent(app);
+    const csrf = csrfFrom((await agent.get("/staff/login")).text);
+    const res = await agent.post("/staff/login").type("form").send({ login: "nurse", password: "nope", _csrf: csrf });
     expect(res.headers.location).toContain("error");
   });
 
@@ -67,11 +70,11 @@ describe("staff pages", () => {
     await g.replies();
     const [c] = await db.query(`SELECT id FROM cases WHERE urgent ORDER BY id DESC LIMIT 1`);
     const dada = await login("dada");
-    const inbox = await request(app).get("/staff/inbox").set("Cookie", dada);
+    const inbox = await dada.get("/staff/inbox");
     expect(inbox.text).toContain("Safety concern");
-    const view = await request(app).get(`/staff/cases/${c.id}`).set("Cookie", dada);
+    const view = await dada.get(`/staff/cases/${c.id}`);
     expect(view.text).toContain("my boyfriend hit me");
-    await request(app).post(`/staff/cases/${c.id}/reply`).set("Cookie", dada).type("form").send({ body: "I'm here. Are you safe now?", handled: "1" });
+    await dada.post(`/staff/cases/${c.id}/reply`, { body: "I'm here. Are you safe now?", handled: "1" });
     expect((await g.replies()).join()).toContain("Are you safe now?");
     const [after] = await db.query(`SELECT status, first_reply_at FROM cases WHERE id = $1`, [c.id]);
     expect(after.status).toBe("handled");
@@ -85,20 +88,20 @@ describe("staff pages", () => {
     await g.send("how do i get family planning");
     const code = (await g.send("1")).match(/UB-[A-Z0-9]{4}/)![0];
     const clinic = await login("clinic-a");
-    const res = await request(app).post("/staff/clinic/check").set("Cookie", clinic).type("form").send({ code: code.toLowerCase() });
+    const res = await clinic.post("/staff/clinic/check", { code: code.toLowerCase() });
     expect(res.text).toContain("Valid pass");
     expect(res.text).toContain("Family planning");
     expect(res.text).not.toMatch(/0712000202|254712000202/);
-    await request(app).post("/staff/clinic/redeem").set("Cookie", clinic).type("form").send({ code });
+    await clinic.post("/staff/clinic/redeem", { code });
     const [p] = await db.query(`SELECT redeemed_clinic FROM passes WHERE code = $1`, [code]);
     expect(p.redeemed_clinic).toBe(1);
-    const bad = await request(app).post("/staff/clinic/check").set("Cookie", clinic).type("form").send({ code: "UB-ZZZZ" });
+    const bad = await clinic.post("/staff/clinic/check", { code: "UB-ZZZZ" });
     expect(bad.text).toContain("Not valid");
   });
 
   it("shows the dashboard with model reports and hides small clinic samples", async () => {
     const admin = await login("admin");
-    const res = await request(app).get("/staff/dashboard").set("Cookie", admin);
+    const res = await admin.get("/staff/dashboard");
     expect(res.text).toContain("Clinic</em> dignity scores");
     expect(res.text).toContain("Danger-sign classifier");
     expect(res.text).toContain("fewer than 5 answers");
@@ -106,9 +109,9 @@ describe("staff pages", () => {
 
   it("saves labels that become training data", async () => {
     const nurse = await login("nurse");
-    const page = await request(app).get("/staff/label").set("Cookie", nurse);
+    const page = await nurse.get("/staff/label");
     const id = page.text.match(/name="message_id" value="(\d+)"/)![1];
-    await request(app).post("/staff/label").set("Cookie", nurse).type("form").send({ message_id: id, danger: "none", topic: "family_planning" });
+    await nurse.post("/staff/label", { message_id: id, danger: "none", topic: "family_planning" });
     const rows = await db.query(`SELECT task, label FROM labels WHERE message_id = $1 ORDER BY task`, [id]);
     expect(rows).toEqual([
       { task: "danger", label: "none" },

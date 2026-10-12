@@ -8,6 +8,7 @@ import { groundedAnswer } from "./ai/llm.js";
 import { transcribe } from "./ai/stt.js";
 import { issuePass, SERVICE_MENU, TOPIC_SERVICES } from "./referrals.js";
 import { sendToUser, alertStaff, type UserRow } from "./channels/outbound.js";
+import { log } from "./log.js";
 
 // The conversation engine: one function that handles every incoming message,
 // from any channel (WhatsApp, SMS, simulator).
@@ -50,7 +51,12 @@ async function setState(db: Db, user: UserRow, state: State) {
   await db.query(`UPDATE users SET state = $2 WHERE id = $1`, [user.id, JSON.stringify(state)]);
 }
 
-const say = (db: Db, user: UserRow, key: string, vars: Record<string, string | number> = {}) => sendToUser(db, user, t(user.language, key, vars));
+const say = async (db: Db, user: UserRow, key: string, vars: Record<string, string | number> = {}): Promise<void> => {
+  await sendToUser(db, user, t(user.language, key, vars));
+};
+const reply = async (db: Db, user: UserRow, body: string): Promise<void> => {
+  await sendToUser(db, user, body);
+};
 
 export async function handleIncoming(db: Db, msg: Incoming): Promise<void> {
   const { user, isNew } = await getOrCreateUser(db, msg);
@@ -219,7 +225,9 @@ async function openCase(db: Db, user: UserRow, reason: string, urgent: boolean, 
   ]);
   if (urgent) {
     const alert = `UBAH URGENT case #${c.id} (${reason.replace("danger_", "")}), girl ${user.anon_id}. Open: ${config.baseUrl}/staff/cases/${c.id}`;
+    // Failed alerts are retried by the job queue; the case is also at the top of every inbox.
     for (const phone of config.nurseAlertNumbers) await alertStaff(db, phone, alert);
+    if (config.nurseAlertNumbers.length === 0) log.warn({ caseId: c.id }, "urgent case opened but NURSE_ALERT_NUMBERS is empty (allowed only outside production)");
   }
   return c.id as number;
 }
@@ -239,22 +247,37 @@ async function handleDanger(db: Db, user: UserRow, a: Analysis, text: string) {
 
 // ---- The day-3 check-in: closes the loop and builds each clinic's dignity score ----
 
+export type CheckinResult = "sent" | "busy" | "skipped";
+
+// Sends one check-in. Atomic: the check-in is claimed (sent_at set) before sending,
+// so the scheduled job and the safety-net sweep can never both send it.
+export async function sendCheckin(db: Db, checkinId: number): Promise<CheckinResult> {
+  const [row] = await db.query(
+    `SELECT c.id, c.pass_code, c.user_id, c.sent_at, u.opted_out FROM checkins c JOIN users u ON u.id = c.user_id WHERE c.id = $1`,
+    [checkinId],
+  );
+  if (!row || row.sent_at || row.opted_out) return "skipped";
+  const [user] = await db.query<UserRow>(`SELECT * FROM users WHERE id = $1`, [row.user_id]);
+  if (!user) return "skipped";
+  // Don't interrupt a check-in already in progress; try again later.
+  if (String(user.state?.step ?? "").startsWith("checkin_")) return "busy";
+  const claimed = await db.query(`UPDATE checkins SET sent_at = now() WHERE id = $1 AND sent_at IS NULL RETURNING id`, [row.id]);
+  if (claimed.length === 0) return "skipped";
+  await setState(db, user, { step: "checkin_visited", checkinId: row.id, passCode: row.pass_code });
+  await say(db, user, "checkin_visited", { code: row.pass_code });
+  return "sent";
+}
+
+// Safety net (and the simulator's "skip 3 days"): send every check-in that is due.
 export async function sendDueCheckins(db: Db, now = new Date()): Promise<number> {
   const due = await db.query(
-    `SELECT c.id, c.pass_code, c.user_id FROM checkins c JOIN users u ON u.id = c.user_id
+    `SELECT c.id FROM checkins c JOIN users u ON u.id = c.user_id
       WHERE c.sent_at IS NULL AND c.due_at <= $1 AND NOT u.opted_out ORDER BY c.due_at LIMIT 200`,
     [now.toISOString()],
   );
-  for (const row of due) {
-    const [user] = await db.query<UserRow>(`SELECT * FROM users WHERE id = $1`, [row.user_id]);
-    if (!user) continue;
-    // Don't interrupt a check-in already in progress; try again next run.
-    if (String(user.state?.step ?? "").startsWith("checkin_")) continue;
-    await db.query(`UPDATE checkins SET sent_at = now() WHERE id = $1`, [row.id]);
-    await setState(db, user, { step: "checkin_visited", checkinId: row.id, passCode: row.pass_code });
-    await say(db, user, "checkin_visited", { code: row.pass_code });
-  }
-  return due.length;
+  let sent = 0;
+  for (const row of due) if ((await sendCheckin(db, row.id)) === "sent") sent++;
+  return sent;
 }
 
 async function handleCheckinReply(db: Db, user: UserRow, state: State, text: string) {
@@ -277,12 +300,12 @@ async function handleCheckinReply(db: Db, user: UserRow, state: State, text: str
     }
     const clinics = await db.query(`SELECT id, name FROM clinics WHERE active ORDER BY id LIMIT 8`);
     await setState(db, user, { ...state, step: "checkin_clinic", clinicOptions: clinics.map((c) => c.id) });
-    return sendToUser(db, user, `Which clinic did you go to?\n${clinics.map((c, i) => `${i + 1} ${c.name}`).join("\n")}`);
+    return reply(db, user, `Which clinic did you go to?\n${clinics.map((c, i) => `${i + 1} ${c.name}`).join("\n")}`);
   }
   if (state.step === "checkin_clinic") {
     const n = Number(text);
     const clinicId = state.clinicOptions?.[n - 1];
-    if (!clinicId) return sendToUser(db, user, "Please reply with the clinic's number.");
+    if (!clinicId) return reply(db, user, "Please reply with the clinic's number.");
     await db.query(`UPDATE checkins SET clinic_id = $2 WHERE id = $1`, [id, clinicId]);
     await setState(db, user, { ...state, step: "checkin_respect" });
     return say(db, user, "checkin_respect");

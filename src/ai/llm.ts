@@ -1,4 +1,5 @@
 import { config, mockMode } from "../config.js";
+import { log } from "../log.js";
 import type { ContentItem } from "../content/content.js";
 
 // Grounded answering: the model may ONLY rephrase approved content to fit the girl's question.
@@ -45,7 +46,7 @@ export async function groundedAnswer(question: string, items: ContentItem[]): Pr
     if (text.includes("NOT_COVERED")) return { text: "", usedModel: true, covered: false };
     return { text, usedModel: true, covered: true };
   } catch (err) {
-    console.error("[llm] falling back to approved text:", (err as Error).message);
+    log.warn({ err: (err as Error).message }, "llm failed, falling back to approved text");
     return fallback;
   }
 }

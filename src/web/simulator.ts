@@ -6,6 +6,29 @@ import { page, esc, h1 } from "./html.js";
 
 // Chat as a girl from a browser, without WhatsApp or a phone. For demos and testing only.
 
+const SIM_JS = `
+const thread = document.getElementById('thread');
+const phone = document.getElementById('sim').dataset.phone;
+function add(t, cls) { const d = document.createElement('div'); d.className = 'bubble ' + cls; d.textContent = t; thread.appendChild(d); thread.scrollTop = thread.scrollHeight; }
+async function load() {
+  const r = await fetch('/simulator/history?phone=' + encodeURIComponent(phone));
+  const j = await r.json();
+  thread.innerHTML = '';
+  j.forEach((m) => add((m.kind === 'voice' ? '[voice note] ' : '') + m.body, m.direction === 'in' ? 'in' : 'out'));
+}
+document.getElementById('send').onsubmit = async (e) => {
+  e.preventDefault();
+  const i = document.getElementById('text'); const t = i.value.trim(); if (!t) return; i.value = '';
+  await fetch('/simulator/send', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ phone, text: t, voice: document.getElementById('asvoice').checked }) });
+  load();
+};
+document.getElementById('skip').onclick = async () => {
+  await fetch('/simulator/skip', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ phone }) });
+  load();
+};
+load();
+`;
+
 export function simulatorRouter(db: Db): Router {
   const r = Router();
 
@@ -20,18 +43,15 @@ export function simulatorRouter(db: Db): Router {
 <form id="send" class="row" style="margin-top:10px"><input id="text" placeholder="Type a message" autocomplete="off" style="flex:1">
 <label class="inline" style="margin:0"><input type="checkbox" id="asvoice"> as voice note</label><button class="accent">Send</button></form>
 <div class="row" style="margin-top:10px"><button class="secondary" id="skip" type="button">Skip 3 days (send check-ins)</button></div></div>
-<script>
-const thread=document.getElementById('thread');const phone=${JSON.stringify(phone)};
-function add(t,cls){const d=document.createElement('div');d.className='bubble '+cls;d.textContent=t;thread.appendChild(d);thread.scrollTop=thread.scrollHeight}
-async function load(){const r=await fetch('/simulator/history?phone='+encodeURIComponent(phone));const j=await r.json();thread.innerHTML='';j.forEach(m=>add((m.kind==='voice'?'[voice note] ':'')+m.body,m.direction==='in'?'in':'out'))}
-document.getElementById('send').onsubmit=async e=>{e.preventDefault();const i=document.getElementById('text');const t=i.value.trim();if(!t)return;i.value='';
-await fetch('/simulator/send',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({phone,text:t,voice:document.getElementById('asvoice').checked})});load()};
-document.getElementById('skip').onclick=async()=>{await fetch('/simulator/skip',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({phone})});load()};
-load();
-</script>`,
+<div id="sim" data-phone="${esc(phone)}"></div><script src="/simulator/app.js" defer></script>`,
         `<a href="/staff/login">Staff login</a>`,
       ),
     );
+  });
+
+  // Served as a file (not inline) so the Content-Security-Policy can forbid inline scripts.
+  r.get("/app.js", (_req, res) => {
+    res.type("application/javascript").send(SIM_JS);
   });
 
   r.get("/history", async (req, res) => {
@@ -44,7 +64,7 @@ load();
 
   r.post("/send", async (req, res) => {
     const { phone, text, voice } = req.body ?? {};
-    if (!phone || !text) return res.status(400).json({ error: "phone and text required" });
+    if (typeof phone !== "string" || typeof text !== "string" || !phone || !text) return res.status(400).json({ error: "phone and text required" });
     await handleIncoming(db, voice ? { channel: "simulator", from: phone, voice: { audio: Buffer.from("simulated"), mimeType: "audio/ogg", mockText: text } } : { channel: "simulator", from: phone, text });
     res.json({ ok: true });
   });

@@ -1,12 +1,19 @@
 import { config, mockMode } from "../config.js";
 import { normalizePhone } from "../privacy.js";
+import { log } from "../log.js";
+
+// In mock mode, sent messages are kept in memory (newest last) so tests and local logins can read them.
+export const mockSmsSent: Array<{ to: string; message: string; at: number }> = [];
 
 // Africa's Talking SMS. Inbound messages arrive at POST /webhooks/sms (form-encoded: from, to, text).
 // Docs: https://developers.africastalking.com/docs/sms/sending
 
 export async function sendSms(to: string, message: string): Promise<string> {
   if (mockMode.sms()) {
-    console.log(`[sms:mock] -> ${to.slice(0, 6)}***: ${message.replace(/\n/g, " | ")}`);
+    // Mock mode never runs in production (config refuses), so showing the text here is safe.
+    log.info({ channel: "sms", mock: true, toPrefix: normalizePhone(to).slice(0, 6) }, `[sms:mock] ${message.replace(/\n/g, " | ")}`);
+    mockSmsSent.push({ to: normalizePhone(to), message, at: Date.now() });
+    if (mockSmsSent.length > 500) mockSmsSent.shift();
     return "mock";
   }
   const host = config.africasTalking.sandbox ? "api.sandbox.africastalking.com" : "api.africastalking.com";
