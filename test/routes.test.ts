@@ -14,6 +14,7 @@ import { inboxRouter } from "../src/web/inbox.js";
 import { clinicRouter } from "../src/web/clinic.js";
 import { dashboardRouter } from "../src/web/dashboard.js";
 import { paymentsRouter } from "../src/web/payments.js";
+import { modelsRouter } from "../src/web/models.js";
 import { trainAll } from "../src/ml/train.js";
 import { reloadModels } from "../src/ml/models.js";
 import type { Db } from "../src/db.js";
@@ -133,6 +134,12 @@ const INVENTORY = [
   "POST /staff/translations/versions/:id/submit",
   "POST /webhooks/mpesa/:token/:kind",
   "POST /webhooks/sms",
+  "POST /webhooks/sms/delivery",
+  "POST /webhooks/sms/optout",
+  "GET /staff/models",
+  "POST /staff/models/train",
+  "POST /staff/models/:id/promote",
+  "POST /staff/models/:id/reject",
   "POST /webhooks/ussd",
   "POST /webhooks/whatsapp",
 ].sort();
@@ -182,6 +189,7 @@ describe("route inventory", () => {
         contentRouter(db),
         stringsRouter(db),
         paymentsRouter(db),
+        modelsRouter(db),
         staffRouter(db),
       ].flatMap((router: any) => routesOf(router.stack, "/staff")),
     ].sort();

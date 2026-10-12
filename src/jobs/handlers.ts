@@ -3,6 +3,9 @@ import { config } from "../config.js";
 import { sendCheckin, sendDueCheckins } from "../engine.js";
 import { retryOutbox } from "../channels/outbound.js";
 import { applyMpesaResult, sendPayout } from "../payments/mpesa.js";
+import { recoverInbound, scheduleInboundRecovery } from "../channels/inbound.js";
+import { trainCandidate } from "../ml/registry.js";
+import { TASKS } from "../ml/train.js";
 import { enqueue, registerJob, RetryLater } from "./queue.js";
 import { log } from "../log.js";
 
@@ -10,6 +13,8 @@ import { log } from "../log.js";
 //   checkin.send    the day-3 check-in for one pass, scheduled when the pass is issued
 //   checkins.sweep  safety net: sends any due check-in that was missed, then schedules itself again
 //   outbox.retry    re-sends a failed message to a girl, or a failed urgent alert to a nurse
+//   inbound.recover handles inbound messages a stop or error left unhandled (every 2 minutes)
+//   ml.train        trains candidate models from labels (an admin promotes them)
 //   mpesa.pay       sends one approved Dada payout to M-Pesa (at most once)
 //   mpesa.mock_result  mock mode only: M-Pesa's pretend "success" callback
 
@@ -39,6 +44,20 @@ export function registerAllJobs() {
 
   registerJob("outbox.retry", async (db, job) => {
     await retryOutbox(db, job.payload);
+  });
+
+  registerJob("inbound.recover", async (db) => {
+    try {
+      const n = await recoverInbound(db);
+      if (n) log.warn({ recovered: n }, "handled inbound messages left over from a stop or error");
+    } finally {
+      await scheduleInboundRecovery(db);
+    }
+  });
+
+  // Trains a candidate for each model from the seed set and nurse/Dada labels (promotion is manual).
+  registerJob("ml.train", async (db, job) => {
+    for (const task of TASKS) await trainCandidate(db, task, job.payload.staffId ?? null, "Trained from the Models page");
   });
 
   registerJob("mpesa.pay", async (db, job) => {

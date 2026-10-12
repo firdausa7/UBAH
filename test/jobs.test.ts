@@ -190,7 +190,7 @@ describe("background work", () => {
     const [job] = await db.query(`SELECT max_attempts, payload FROM jobs WHERE type = 'outbox.retry' AND payload->>'outboxId' = $1`, [String(alert.id)]);
     expect(job.max_attempts).toBe(20);
     expect(JSON.stringify(job.payload)).not.toContain("700000999"); // nurse number encrypted
-    transports.sms = async () => "sent";
+    transports.sms = async () => ({ status: "sent" as const, providerId: "AT-1" });
     await runDueJobs(db, { now: later(1) });
     expect((await db.query(`SELECT status FROM outbox WHERE id = $1`, [alert.id]))[0].status).toBe("sent");
   });

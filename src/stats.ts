@@ -133,8 +133,12 @@ export async function dashboardStats(db: Db, f: Filters) {
 
   const [labels] = await db.query(`SELECT count(DISTINCT message_id)::int AS n FROM labels`);
   const [payouts] = await db.query(`SELECT coalesce(sum(amount_kes), 0)::int AS pending FROM dada_payouts WHERE status IN ('pending','approved')`);
+  // The live model's report from the registry, else the models/ folder.
+  const active = await db.query<{ task: string; report: unknown }>(`SELECT task, report FROM model_versions WHERE status = 'active'`);
   const modelReports = Object.fromEntries(
     ["danger", "topic"].map((task) => {
+      const live = active.find((a) => a.task === task);
+      if (live) return [task, live.report];
       const path = join(MODELS_DIR, `${task}.report.json`);
       return [task, existsSync(path) ? JSON.parse(readFileSync(path, "utf8")) : null];
     }),

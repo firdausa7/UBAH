@@ -48,6 +48,13 @@ const EnvSchema = z.object({
   WHATSAPP_VERIFY_TOKEN: z.string().default("ubah-verify"),
   WHATSAPP_APP_SECRET: z.string().default(""),
   WHATSAPP_GRAPH_VERSION: z.string().default("v21.0"),
+  // Approved message templates for messages outside the 24-hour window (see README → WhatsApp).
+  WHATSAPP_TEMPLATE_CHECKIN: z.string().default(""),
+  WHATSAPP_TEMPLATE_NOTIFY: z.string().default(""),
+  // Which Ubah languages have an approved template, and its WhatsApp language code: "en:en,sw:sw".
+  WHATSAPP_TEMPLATE_LANGUAGES: z.string().default("en:en"),
+  WHATSAPP_MAX_VOICE_MB: num(10, 1),
+  SMS_PART_CHARS: num(459, 70),
 
   AT_USERNAME: z.string().default("sandbox"),
   AT_API_KEY: z.string().default(""),
@@ -142,7 +149,16 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
       // Meta app secret: when set, every webhook call's signature is checked.
       appSecret: e.WHATSAPP_APP_SECRET,
       graphVersion: e.WHATSAPP_GRAPH_VERSION,
+      templateCheckin: e.WHATSAPP_TEMPLATE_CHECKIN,
+      templateNotify: e.WHATSAPP_TEMPLATE_NOTIFY,
+      templateLanguages: Object.fromEntries(
+        e.WHATSAPP_TEMPLATE_LANGUAGES.split(",")
+          .map((p) => p.split(":").map((x) => x.trim()))
+          .filter((p) => p.length === 2 && p[0] && p[1]),
+      ) as Record<string, string>,
+      maxVoiceBytes: e.WHATSAPP_MAX_VOICE_MB * 1024 * 1024,
     },
+    smsPartChars: e.SMS_PART_CHARS,
 
     // Africa's Talking SMS.
     africasTalking: { username: e.AT_USERNAME, apiKey: e.AT_API_KEY, senderId: e.AT_SENDER_ID, sandbox: e.AT_USERNAME === "sandbox" },

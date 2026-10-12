@@ -4,10 +4,11 @@ import { encryptPhone, hashPhone, newAnonId } from "./privacy.js";
 import { t, LANGUAGE_MENU, hasTranslation } from "./i18n.js";
 import { analyse, type Analysis } from "./ml/models.js";
 import { search, localize } from "./content/content.js";
+import { nearestClinics, matchPlace, type ClinicPlace } from "./location.js";
 import { groundedAnswer } from "./ai/llm.js";
 import { transcribe } from "./ai/stt.js";
 import { issuePass, SERVICE_MENU, TOPIC_SERVICES } from "./referrals.js";
-import { sendToUser, alertStaff, type UserRow } from "./channels/outbound.js";
+import { sendToUser, alertStaff, flushPending, type UserRow } from "./channels/outbound.js";
 import { log } from "./log.js";
 import { refreshCaches } from "./caches.js";
 import { caseBus, caseEvent, levelFor, type CaseSignal } from "./cases.js";
@@ -20,6 +21,8 @@ export interface Incoming {
   from: string; // phone number (never stored in clear)
   text?: string;
   voice?: { audio: Buffer; mimeType: string; mockText?: string };
+  // A shared WhatsApp location. Used once to find the nearest clinic, never stored.
+  location?: { lat: number; lng: number; name?: string; address?: string };
 }
 
 type Step = "language" | "free" | "after_answer" | "choose_services" | "checkin_visited" | "checkin_clinic" | "checkin_respect";
@@ -32,28 +35,29 @@ interface State {
   clinicOptions?: number[];
 }
 
-async function getOrCreateUser(db: Db, msg: Incoming): Promise<{ user: UserRow; isNew: boolean }> {
+export async function getOrCreateUser(db: Db, msg: Pick<Incoming, "channel" | "from">): Promise<{ user: UserRow; isNew: boolean }> {
   const hash = hashPhone(msg.from);
-  const [existing] = await db.query<UserRow>(`SELECT * FROM users WHERE phone_hash = $1`, [hash]);
-  if (existing) {
-    await db.query(`UPDATE users SET last_seen_at = now(), channel = $2 WHERE id = $1`, [existing.id, msg.channel]);
-    return { user: { ...existing, channel: msg.channel }, isNew: false };
-  }
+  const wa = msg.channel === "whatsapp";
+  const [existing] = await db.query<UserRow>(
+    `UPDATE users SET last_seen_at = now(), channel = $2, wa_last_inbound_at = CASE WHEN $3 THEN now() ELSE wa_last_inbound_at END WHERE phone_hash = $1 RETURNING *`,
+    [hash, msg.channel, wa],
+  );
+  if (existing) return { user: existing, isNew: false };
   let anon = newAnonId();
   while ((await db.query(`SELECT 1 FROM users WHERE anon_id = $1`, [anon])).length) anon = newAnonId();
   const [user] = await db.query<UserRow>(
-    `INSERT INTO users (anon_id, phone_hash, phone_enc, channel, state) VALUES ($1,$2,$3,$4,$5) RETURNING *`,
-    [anon, hash, encryptPhone(msg.from), msg.channel, JSON.stringify({ step: "language" })],
+    `INSERT INTO users (anon_id, phone_hash, phone_enc, channel, state, wa_last_inbound_at) VALUES ($1,$2,$3,$4,$5, CASE WHEN $6 THEN now() END) RETURNING *`,
+    [anon, hash, encryptPhone(msg.from), msg.channel, JSON.stringify({ step: "language" }), wa],
   );
   return { user, isNew: true };
 }
 
-async function setState(db: Db, user: UserRow, state: State) {
+export async function setState(db: Db, user: UserRow, state: State) {
   user.state = state;
   await db.query(`UPDATE users SET state = $2 WHERE id = $1`, [user.id, JSON.stringify(state)]);
 }
 
-const say = async (db: Db, user: UserRow, key: string, vars: Record<string, string | number> = {}): Promise<void> => {
+export const say = async (db: Db, user: UserRow, key: string, vars: Record<string, string | number> = {}): Promise<void> => {
   await sendToUser(db, user, t(user.language, key, vars));
 };
 const reply = async (db: Db, user: UserRow, body: string): Promise<void> => {
@@ -63,6 +67,13 @@ const reply = async (db: Db, user: UserRow, body: string): Promise<void> => {
 export async function handleIncoming(db: Db, msg: Incoming): Promise<void> {
   await refreshCaches(db); // published content, translations and glossary
   const { user, isNew } = await getOrCreateUser(db, msg);
+  // Her WhatsApp window just opened: first deliver anything held for her.
+  if (msg.channel === "whatsapp" && !isNew) await flushPending(db, user);
+
+  if (msg.location) {
+    await logIn(db, user, msg.channel, "location", "[shared a location]", null);
+    return suggestNearest(db, user, { lat: msg.location.lat, lng: msg.location.lng });
+  }
 
   // Voice note -> text (Somali speech model in the pilot).
   let text = (msg.text ?? "").trim();
@@ -77,8 +88,21 @@ export async function handleIncoming(db: Db, msg: Incoming): Promise<void> {
     text = tr.text;
   }
 
+  // SAFETY: a danger sign always reaches a human, whatever step she is on (even her very first
+  // message, or in the middle of a check-in). Plain numbers and commands are menu answers, not text.
+  if (/\p{L}{3,}/u.test(text) && !/^(STOP|DELETE|HELP|MENU|DADA)$/i.test(text.trim())) {
+    const early = analyse(text, user.language);
+    if (early.danger !== "none") {
+      if (user.opted_out) await db.query(`UPDATE users SET opted_out = FALSE WHERE id = $1`, [user.id]);
+      user.opted_out = false;
+      await logIn(db, user, msg.channel, kind, text, early);
+      return handleDanger(db, user, early, text);
+    }
+  }
+
   if (isNew || user.opted_out) {
     if (user.opted_out) await db.query(`UPDATE users SET opted_out = FALSE WHERE id = $1`, [user.id]);
+    user.opted_out = false;
     await logIn(db, user, msg.channel, kind, text, null);
     await setState(db, user, { step: "language" });
     return say(db, user, "welcome");
@@ -90,7 +114,14 @@ export async function handleIncoming(db: Db, msg: Incoming): Promise<void> {
     await logIn(db, user, msg.channel, kind, text, null);
     await say(db, user, "stopped");
     await db.query(`UPDATE users SET opted_out = TRUE WHERE id = $1`, [user.id]);
+    await db.query(`DELETE FROM pending_outbound WHERE user_id = $1`, [user.id]);
     return;
+  }
+  // "NEAR <area or landmark>": find the nearest partner clinic.
+  const near = text.match(/^\s*(NEAR|KARIIB|KARIBU|DHIYOO)\s+(.{2,80})$/i);
+  if (near) {
+    await logIn(db, user, msg.channel, kind, "[asked for the nearest clinic]", null);
+    return suggestNearest(db, user, { text: near[2] });
   }
   if (cmd === "DELETE") {
     // Deletes her messages, passes, check-ins and cases; keeps nothing that links back to her.
@@ -127,7 +158,7 @@ export async function handleIncoming(db: Db, msg: Incoming): Promise<void> {
   }
 
   // Free text: understand it first.
-  const a = analyse(text);
+  const a = analyse(text, user.language);
   await logIn(db, user, msg.channel, kind, text, a);
 
   if (a.danger !== "none") return handleDanger(db, user, a, text);
@@ -157,24 +188,28 @@ async function logIn(db: Db, user: UserRow, channel: string, kind: string, body:
 }
 
 async function answerQuestion(db: Db, user: UserRow, a: Analysis, question: string) {
-  const hits = search(a.text, { topic: a.topic ?? undefined });
+  const lang = user.language ?? "en";
+  const hits = search(a.text, { topic: a.topic ?? undefined, lang });
   if (hits.length === 0 || hits[0].score < 1) {
     await setState(db, user, { step: "after_answer", lastServices: [], lastTopic: a.topic });
     return say(db, user, "dont_know");
   }
   const best = hits[0].item;
-  const answer = await groundedAnswer(question, hits.map((h) => h.item));
+  // The approved version in her language if one is published, else the English one (with a note).
+  const { item, translated } = localize(best, lang);
+  // The AI may only rephrase approved text, in that text's own language: it never translates health content.
+  const sameLang = hits.map((h) => h.item).filter((i) => i.language === item.language);
+  const answer = await groundedAnswer(question, [item, ...sameLang.filter((i) => i.id !== item.id)]);
   if (!answer.covered) {
     await setState(db, user, { step: "after_answer", lastServices: [], lastTopic: a.topic });
     return say(db, user, "dont_know");
   }
-  const lang = user.language ?? "en";
-  const { item, translated } = localize(best, lang);
-  // If a native-language version exists, send it as written (approved text); otherwise the English answer.
-  let body = translated && item.language === lang && lang !== "en" ? item.body : answer.text;
+  let body = answer.text;
   if (!translated) body = `${body}\n${t(lang, "translation_pending")}`;
+  // Citation: which approved topic this answer came from.
+  body = `${body}\n${t(lang, "answer_source", { title: item.title })}`;
   const services = best.services.length ? best.services : TOPIC_SERVICES[best.topic] ?? [];
-  await sendToUser(db, user, body, best.id);
+  await sendToUser(db, user, body, item.id, null, { contentVersionId: item.versionId, audioMediaId: translated ? item.audioMediaId : null });
   await setState(db, user, { step: "after_answer", lastServices: services, lastTopic: best.topic });
   return say(db, user, "answer_menu");
 }
@@ -202,7 +237,35 @@ async function issueAndSend(db: Db, user: UserRow, services: string[]) {
     free: pass.clinic.free ? t(user.language, "pass_free") : "",
     days: config.passValidDays,
   });
-  return say(db, user, "checkin_scheduled");
+  await say(db, user, "checkin_scheduled");
+  // Only offer "find a nearer clinic" when we know where clinics are.
+  const [{ n }] = await db.query<{ n: number }>(`SELECT count(*)::int AS n FROM clinics WHERE active AND (lat IS NOT NULL OR cardinality(landmarks) > 0)`);
+  if (n > 0 && !user.area) await say(db, user, "near_hint");
+}
+
+// Nearest partner clinic for her last needed services, from a shared location or a typed area/landmark.
+// Coordinates are used once and never stored; only the matched area name and site are kept.
+async function suggestNearest(db: Db, user: UserRow, where: { lat: number; lng: number } | { text: string }) {
+  const state: State = user.state?.step ? user.state : { step: "free" };
+  const [lastPass] = await db.query<{ services: string[] }>(`SELECT services FROM passes WHERE user_id = $1 ORDER BY issued_at DESC LIMIT 1`, [user.id]);
+  const services = state.lastServices?.length ? state.lastServices : lastPass?.services ?? [];
+  const clinics = await db.query<ClinicPlace>(`SELECT c.id, c.name, c.area, c.hours, c.services, c.lat, c.lng, c.landmarks, c.site_id, s.name AS site FROM clinics c LEFT JOIN sites s ON s.id = c.site_id WHERE c.active`);
+  let origin: { lat: number; lng: number } | null = "lat" in where ? where : null;
+  let placeName: string | null = null;
+  let preferId: number | undefined;
+  if (!origin && "text" in where) {
+    const place = matchPlace(clinics, where.text);
+    if (!place) return say(db, user, "near_not_found");
+    origin = place.point;
+    placeName = place.name;
+    preferId = place.clinicId;
+  }
+  const near = nearestClinics(clinics, origin, services, preferId).slice(0, 2);
+  if (!near.length) return say(db, user, "near_none");
+  const top = near[0];
+  await db.query(`UPDATE users SET site_id = COALESCE($2, site_id), area = COALESCE($3, area) WHERE id = $1`, [user.id, top.clinic.site_id, placeName ?? top.clinic.area]);
+  const lines = near.map((x) => t(user.language, "near_clinic", { clinic: x.clinic.name, area: x.clinic.area, hours: x.clinic.hours, km: x.km == null ? "?" : x.km < 1 ? "<1" : String(Math.round(x.km)) }));
+  return reply(db, user, `${t(user.language, "near_intro")}\n${lines.join("\n")}`);
 }
 
 async function requestDada(db: Db, user: UserRow, text: string) {
@@ -218,7 +281,7 @@ const DRAFTS: Record<string, string> = {
   asked_for_person: "Hi, I'm a Dada from Ubah. How can I help you today?",
 };
 
-async function openCase(db: Db, user: UserRow, reason: string, urgent: boolean, summary: string) {
+export async function openCase(db: Db, user: UserRow, reason: string, urgent: boolean, summary: string) {
   const level = levelFor(reason);
   const [c] = await db.query(`INSERT INTO cases (user_id, reason, urgent, summary, draft_reply, level, site_id) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id`, [
     user.id,

@@ -38,7 +38,7 @@ export function train(task: string, data: Example[], opts: { uniformPrior?: bool
   }
   for (const ex of data) {
     docs[ex.label]++;
-    for (const f of features(ex.text)) {
+    for (const f of features(ex.text, ex.language ?? "en")) {
       vocab.add(f);
       counts[ex.label].set(f, (counts[ex.label].get(f) ?? 0) + 1);
       totals[ex.label]++;
@@ -66,8 +66,8 @@ export interface Prediction {
   known: number; // how many of the message's features the model has seen
 }
 
-export function predict(model: ModelJson, text: string): Prediction {
-  const feats = features(text);
+export function predict(model: ModelJson, text: string, lang = "en"): Prediction {
+  const feats = features(text, lang);
   const scores: Record<string, number> = {};
   let known = 0;
   const seen = new Set<string>();
@@ -113,7 +113,7 @@ export function crossValidate(task: string, data: Example[], folds = 5, opts: { 
     const testSet = data.filter((ex) => foldOf.get(ex) === k);
     const model = train(task, trainSet, opts);
     for (const ex of testSet) {
-      const p = predict(model, ex.text).label;
+      const p = predict(model, ex.text, ex.language ?? "en").label;
       confusion[ex.label][p] = (confusion[ex.label][p] ?? 0) + 1;
       if (p === ex.label) correct++;
     }

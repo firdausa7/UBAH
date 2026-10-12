@@ -7,7 +7,7 @@
     "test": "vitest run",
     "dev": "tsx watch --env-file-if-exists=.env src/server.ts",
     "start": "node --env-file-if-exists=.env --import tsx src/server.ts",
-    "train": "tsx src/ml/train.ts",
+    "train": "tsx src/ml/trainCli.ts",
     "seed": "tsx src/seed.ts",
     "typecheck": "tsc --noEmit",
     "migrate": "tsx src/migrateCli.ts",
@@ -15,7 +15,8 @@
     "lint": "oxlint --deny-warnings src test",
     "check": "npm run lint && npm run typecheck && npm test",
     "test:pg": "TEST_DATABASE_URL=${TEST_DATABASE_URL:-postgres://ubah@127.0.0.1:55432/ubah_test} vitest run",
-    "import-content": "tsx src/importContent.ts"
+    "import-content": "tsx src/importContent.ts",
+    "eval:stt": "tsx src/ai/sttEval.ts"
   },
   "keywords": [],
   "author": "",

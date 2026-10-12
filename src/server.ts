@@ -6,8 +6,7 @@ import { fileURLToPath } from "node:url";
 import { config, mockMode } from "./config.js";
 import { getDb, type Db } from "./db.js";
 import { log, safePath } from "./log.js";
-import { handleIncoming } from "./engine.js";
-import { parseWhatsAppWebhook, downloadWhatsAppMedia } from "./channels/whatsapp.js";
+import { parseWhatsAppWebhook } from "./channels/whatsapp.js";
 import { parseInboundSms } from "./channels/sms.js";
 import { staffRouter } from "./web/staff.js";
 import { loginRouter } from "./web/login.js";
@@ -18,8 +17,13 @@ import { inboxRouter } from "./web/inbox.js";
 import { clinicRouter } from "./web/clinic.js";
 import { dashboardRouter } from "./web/dashboard.js";
 import { paymentsRouter } from "./web/payments.js";
-import { handleDeskSms, handleUssd } from "./clinicDesk.js";
-import { alertStaff } from "./channels/outbound.js";
+import { modelsRouter } from "./web/models.js";
+import { bootstrapModels } from "./ml/registry.js";
+import { handleDeskSms } from "./clinicDesk.js";
+import { handleUssd } from "./ussd.js";
+import { alertStaff, applySmsDelivery, applyWhatsAppStatus } from "./channels/outbound.js";
+import { processInbound, recordInbound, recordInboundWithId, scheduleInboundRecovery } from "./channels/inbound.js";
+import { hashPhone } from "./privacy.js";
 import { applyMpesaResult } from "./payments/mpesa.js";
 import { refreshCaches } from "./caches.js";
 import { simulatorRouter } from "./web/simulator.js";
@@ -135,20 +139,19 @@ export function createApp(db: Db, opts: AppOptions = {}) {
       if (!safeEqual(sig, expected)) return res.sendStatus(401);
     }
     res.sendStatus(200); // Meta expects a fast 200; work continues below.
+    const { messages, statuses } = parseWhatsAppWebhook(req.body);
     track(
       (async () => {
-        for (const m of parseWhatsAppWebhook(req.body)) {
+        for (const s of statuses) {
+          await applyWhatsAppStatus(db, s).catch((err) => log.error({ err: (err as Error).message }, "failed to apply WhatsApp status"));
+        }
+        for (const m of messages) {
           try {
-            if (m.type === "audio" && m.mediaId) {
-              const { audio, mimeType } = await downloadWhatsAppMedia(m.mediaId);
-              await handleIncoming(db, { channel: "whatsapp", from: m.from, voice: { audio, mimeType } });
-            } else if (m.type === "text" || m.type === "interactive") {
-              await handleIncoming(db, { channel: "whatsapp", from: m.from, text: m.text ?? "" });
-            } else {
-              await handleIncoming(db, { channel: "whatsapp", from: m.from, text: "HELP" });
-            }
+            // Recorded first: a duplicate delivery is ignored, a crash is recovered.
+            const id = await recordInbound(db, { provider: "whatsapp", message: m });
+            if (id) await processInbound(db, id);
           } catch (err) {
-            log.error({ err: (err as Error).message, channel: "whatsapp" }, "failed to handle message");
+            log.error({ err: (err as Error).message, channel: "whatsapp" }, "failed to record message");
           }
         }
       })(),
@@ -156,8 +159,9 @@ export function createApp(db: Db, opts: AppOptions = {}) {
   });
 
   // Africa's Talking SMS
+  const smsKeyOk = (req: Request) => !config.smsWebhookKey || safeEqual(String(req.query.key ?? ""), config.smsWebhookKey);
   app.post("/webhooks/sms", (req, res) => {
-    if (config.smsWebhookKey && !safeEqual(String(req.query.key ?? ""), config.smsWebhookKey)) return res.sendStatus(401);
+    if (!smsKeyOk(req)) return res.sendStatus(401);
     const m = parseInboundSms(req.body);
     if (!m) return res.sendStatus(400);
     res.sendStatus(200);
@@ -165,15 +169,39 @@ export function createApp(db: Db, opts: AppOptions = {}) {
       (async () => {
         // Clinic desks check passes by SMS from their registered phone; everyone else is a girl.
         const desk = await handleDeskSms(db, m.from, m.text.slice(0, 200));
-        if (desk !== null) await alertStaff(db, m.from, desk);
-        else await handleIncoming(db, { channel: "sms", from: m.from, text: m.text.slice(0, 1600) });
+        if (desk !== null) return void (await alertStaff(db, m.from, desk));
+        const payload = { provider: "sms" as const, from: m.from, text: m.text };
+        const id = m.id ? await recordInboundWithId(db, "sms", m.id, payload) : await recordInbound(db, payload);
+        if (id) await processInbound(db, id);
       })().catch((err) => log.error({ err: (err as Error).message, channel: "sms" }, "failed to handle message")),
     );
   });
 
-  // Africa's Talking USSD (clinic desk pass checks). Answers must come back within a few seconds.
+  // Delivery reports for SMS Ubah sent.
+  app.post("/webhooks/sms/delivery", async (req, res) => {
+    if (!smsKeyOk(req)) return res.sendStatus(401);
+    const id = String(req.body.id ?? "");
+    const status = String(req.body.status ?? "");
+    if (!id || !status) return res.sendStatus(400);
+    await applySmsDelivery(db, { id, status, failureReason: req.body.failureReason ? String(req.body.failureReason).slice(0, 200) : undefined }).catch((err) =>
+      log.error({ err: (err as Error).message }, "failed to apply SMS delivery report"),
+    );
+    res.sendStatus(200);
+  });
+
+  // Someone opted out of Ubah's sender ID at the network level: never message them again (until they write).
+  app.post("/webhooks/sms/optout", async (req, res) => {
+    if (!smsKeyOk(req)) return res.sendStatus(401);
+    const phone = String(req.body.phoneNumber ?? "");
+    if (!phone) return res.sendStatus(400);
+    await db.query(`UPDATE users SET opted_out = TRUE WHERE phone_hash = $1`, [hashPhone(phone)]);
+    await db.query(`DELETE FROM pending_outbound WHERE user_id IN (SELECT id FROM users WHERE phone_hash = $1)`, [hashPhone(phone)]);
+    res.sendStatus(200);
+  });
+
+  // Africa's Talking USSD: clinic desks (pass checks) and girls (menus). Answers must come back within seconds.
   app.post("/webhooks/ussd", async (req, res) => {
-    if (config.smsWebhookKey && !safeEqual(String(req.query.key ?? ""), config.smsWebhookKey)) return res.sendStatus(401);
+    if (!smsKeyOk(req)) return res.sendStatus(401);
     const phone = String(req.body.phoneNumber ?? "");
     if (!phone) return res.sendStatus(400);
     try {
@@ -214,6 +242,7 @@ export function createApp(db: Db, opts: AppOptions = {}) {
   app.use("/staff", contentRouter(db));
   app.use("/staff", stringsRouter(db));
   app.use("/staff", paymentsRouter(db));
+  app.use("/staff", modelsRouter(db));
   app.use("/staff", staffRouter(db));
 
   // ---- Not found and errors ----
@@ -240,6 +269,7 @@ export interface Running {
 export async function start(): Promise<Running> {
   const db = await getDb(); // runs pending migrations
   if (config.seedDemo) await seedDemo(db);
+  await bootstrapModels(db);
   await refreshCaches(db, { force: true });
   const app = createApp(db);
   const server = app.listen(config.port, () => {
@@ -254,6 +284,7 @@ export async function start(): Promise<Running> {
   let worker: Worker | null = null;
   if (config.jobs.enabled) {
     await scheduleNextSweep(db);
+    await scheduleInboundRecovery(db);
     worker = startWorker(db);
     setWorker(worker);
   }

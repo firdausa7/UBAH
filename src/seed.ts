@@ -4,6 +4,7 @@ import { config } from "./config.js";
 import { hashPassword } from "./privacy.js";
 import { importContentFiles } from "./content/content.js";
 import { glossaryFile } from "./ml/glossary.js";
+import { bootstrapModels } from "./ml/registry.js";
 
 // Demo data for local testing. Clinic names are placeholders — replace with real,
 // verified partner clinics (ideally matched to Kenya Master Facility List codes).
@@ -18,6 +19,7 @@ export const DEMO_CLINICS = [
 // DRAFT / unverified. Safe to run repeatedly: only adds what is missing.
 export async function importStarterContent(db: Db) {
   const added = await importContentFiles(db);
+  await bootstrapModels(db);
   const [{ n }] = await db.query(`SELECT count(*)::int AS n FROM glossary_terms`);
   if (n === 0) {
     for (const g of glossaryFile()) {

@@ -3,6 +3,8 @@ import { config } from "./config.js";
 import { loadServingContent, setServingContent } from "./content/content.js";
 import { setTranslations, TRANSLATION_LANGUAGES } from "./i18n.js";
 import { setGlossary, type GlossaryEntry } from "./ml/glossary.js";
+import { setActiveModels } from "./ml/models.js";
+import { loadActiveModels } from "./ml/registry.js";
 
 // Health content, translated strings and the glossary live in the database but are read on every
 // message, so each app instance keeps a copy and refreshes it every 30 seconds (or at once after
@@ -33,8 +35,9 @@ export async function refreshCaches(db: Db, opts: { force?: boolean } = {}): Pro
   if (!opts.force && loadedFor === db && Date.now() - loadedAt < MAX_AGE_MS) return;
   if (loading && !opts.force) return loading;
   loading = (async () => {
-    const [content, library, strings, glossary] = await Promise.all([loadServingContent(db), loadServingContent(db, true), loadStrings(db), loadGlossary(db)]);
+    const [content, library, strings, glossary, models] = await Promise.all([loadServingContent(db), loadServingContent(db, true), loadStrings(db), loadGlossary(db), loadActiveModels(db)]);
     setServingContent(content, library);
+    setActiveModels(models);
     setTranslations(strings);
     setGlossary(glossary);
     loadedAt = Date.now();

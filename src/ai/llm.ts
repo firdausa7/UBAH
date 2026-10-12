@@ -12,6 +12,7 @@ Rules:
 - If the content does not answer the question, reply exactly: NOT_COVERED
 - Use simple words a 14-year-old understands. At most 3 short sentences. No lists, no markdown.
 - Never diagnose. Never name medicines or doses that are not in the content.
+- Write in the SAME language as the approved content. Never translate it into another language.
 - Be warm and non-judgemental.`;
 
 export interface GroundedAnswer {

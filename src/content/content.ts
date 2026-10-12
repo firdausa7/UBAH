@@ -107,10 +107,10 @@ export async function loadServingContent(db: Db, allowDraft = config.allowDraftC
 let serving: ContentItem[] = [];
 // Word statistics come from the whole English topic library (any status), so that scores stay
 // stable while only a few topics are published. Answers still come only from `serving`.
-let corpus: ContentItem[] = [];
+let librarySource: ContentItem[] = [];
 export function setServingContent(items: ContentItem[], library: ContentItem[] = items) {
   serving = items;
-  corpus = library.filter((c) => c.language === "en");
+  librarySource = library;
 }
 export const servingContent = () => serving;
 
@@ -127,22 +127,30 @@ export interface Hit {
   score: number;
 }
 
-export function search(query: string, opts: { topic?: string; limit?: number } = {}): Hit[] {
-  const docs = serving.filter((c) => c.language === "en");
-  const q = tokenize(query);
-  if (q.length === 0) return [];
-  const toksOf = (d: ContentItem) => tokenize(`${d.title} ${d.keywords.join(" ")} ${d.keywords.join(" ")} ${d.body}`);
+export function search(query: string, opts: { topic?: string; limit?: number; lang?: string } = {}): Hit[] {
+  // Her language's published versions and the English ones, each matched in its own language.
+  const langs = [...new Set([opts.lang ?? "en", "en"])];
+  const docs = serving.filter((c) => langs.includes(c.language));
+  const toksOf = (d: ContentItem) => tokenize(`${d.title} ${d.keywords.join(" ")} ${d.keywords.join(" ")} ${d.body}`, d.language);
   const docTokens = docs.map(toksOf);
-  // Collection statistics over the whole library (plus the served docs, if the library is smaller).
-  const statsDocs = corpus.length >= docs.length ? corpus.map(toksOf) : docTokens;
-  const N = statsDocs.length;
-  const avg = statsDocs.reduce((a, t) => a + t.length, 0) / Math.max(N, 1);
-  const df = new Map<string, number>();
-  for (const toks of statsDocs) for (const t of new Set(toks)) df.set(t, (df.get(t) ?? 0) + 1);
+  const qByLang = new Map(langs.map((l) => [l, tokenize(query, l)]));
+  if ([...qByLang.values()].every((q) => q.length === 0)) return [];
+  // Collection statistics per language, over the whole library (stable while few topics are published).
+  const stats = new Map<string, { N: number; avg: number; df: Map<string, number> }>();
+  for (const l of langs) {
+    const lib = librarySource.filter((c) => c.language === l);
+    const served = docs.filter((c) => c.language === l);
+    const sDocs = (lib.length >= served.length ? lib : served).map(toksOf);
+    const df = new Map<string, number>();
+    for (const toks of sDocs) for (const t of new Set(toks)) df.set(t, (df.get(t) ?? 0) + 1);
+    stats.set(l, { N: sDocs.length, avg: sDocs.reduce((a, t) => a + t.length, 0) / Math.max(sDocs.length, 1), df });
+  }
   const k1 = 1.2,
     b = 0.75;
   const hits = docs.map((item, i) => {
     const toks = docTokens[i];
+    const q = qByLang.get(item.language) ?? [];
+    const { N, avg, df } = stats.get(item.language)!;
     const tf = new Map<string, number>();
     for (const t of toks) tf.set(t, (tf.get(t) ?? 0) + 1);
     let score = 0;

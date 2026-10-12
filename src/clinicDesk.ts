@@ -3,7 +3,6 @@ import { config } from "./config.js";
 import { audit } from "./audit.js";
 import { normalizePhone, verifyPassword } from "./privacy.js";
 import { checkPass, redeemPass, SERVICES } from "./referrals.js";
-import { t } from "./i18n.js";
 
 // Clinic desks without internet check and record passes by SMS or USSD, from the phone number
 // registered on their clinic-desk account, with a desk PIN:
@@ -86,9 +85,10 @@ export async function handleDeskSms(db: Db, from: string, text: string): Promise
 }
 
 // Africa's Talking USSD: `text` is every answer so far, joined by "*". Reply "CON ..." to continue, "END ..." to finish.
-export async function handleUssd(db: Db, phone: string, text: string): Promise<string> {
+// Returns null when the phone isn't a clinic desk (the girl's menu then takes over).
+export async function handleDeskUssd(db: Db, phone: string, text: string): Promise<string | null> {
   const s = await findDeskStaff(db, phone);
-  if (!s) return `END ${t(null, "ussd_info")}`;
+  if (!s) return null;
   const parts = text === "" ? [] : text.split("*");
   if (parts.length === 0) return `CON Ubah clinic desk (${s.clinic_name})\n1 Check a pass\n2 Record a visit`;
   const action = parts[0] === "1" ? "check" : parts[0] === "2" ? "seen" : null;

@@ -139,6 +139,7 @@ const ERRORS: Record<string, string> = {
   placeholders: "The translation must keep every {placeholder} from the English text, exactly as written.",
   file: "Upload an audio file (ogg, mp3, m4a, wav or webm) of at most 5 MB.",
   no_phone: "This Dada has no valid phone number for M-Pesa. Add one on her staff page first.",
+  recall: "Not promoted: the new danger-sign model would miss more girls in at least one danger class than the live one.",
 };
 export function notice(query: Record<string, unknown>): string {
   const ok = NOTICES[String(query.done ?? "")];

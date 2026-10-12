@@ -8,7 +8,13 @@ const here = dirname(fileURLToPath(import.meta.url));
 export const MODELS_DIR = process.env.MODELS_DIR ?? join(here, "../../models");
 
 const loaded: Record<string, ModelJson | null> = {};
+// Active models from the registry (database), set by the cache refresh. They win over models/ files.
+let active: Partial<Record<string, ModelJson>> = {};
+export function setActiveModels(m: Partial<Record<string, ModelJson>>) {
+  active = m;
+}
 function model(task: "danger" | "topic"): ModelJson | null {
+  if (active[task]) return active[task]!;
   if (!(task in loaded)) {
     const p = join(MODELS_DIR, `${task}.json`);
     loaded[task] = existsSync(p) ? JSON.parse(readFileSync(p, "utf8")) : null;
@@ -17,6 +23,7 @@ function model(task: "danger" | "topic"): ModelJson | null {
 }
 export function reloadModels() {
   for (const k of Object.keys(loaded)) delete loaded[k];
+  active = {};
 }
 
 // Safety net: phrases that ALWAYS go to a human, whatever the model says.
@@ -37,7 +44,8 @@ export interface Analysis {
   dangerSource: "rule" | "model" | "none";
 }
 
-export function analyse(raw: string): Analysis {
+export function analyse(raw: string, lang: string | null = "en"): Analysis {
+  const l = lang ?? "en";
   const { text, found } = expandCodedTerms(raw);
   let danger: Analysis["danger"] = "none";
   let dangerSource: Analysis["dangerSource"] = "none";
@@ -48,7 +56,7 @@ export function analyse(raw: string): Analysis {
   } else {
     const dm = model("danger");
     if (dm) {
-      const p = predict(dm, text);
+      const p = predict(dm, text, l);
       // Err on the side of a human: flag when any danger class is reasonably likely.
       const worst = (["selfharm", "safety", "medical"] as const).find((l) => (p.probs[l] ?? 0) >= 0.5 && p.known > 0);
       if (worst) {
@@ -61,7 +69,7 @@ export function analyse(raw: string): Analysis {
   let topicConfidence = topic ? 1 : 0;
   const tm = model("topic");
   if (tm) {
-    const p = predict(tm, text);
+    const p = predict(tm, text, l);
     if (p.known > 0 && (!topic || p.probs[p.label] > 0.6)) {
       topic = p.label;
       topicConfidence = p.probs[p.label];

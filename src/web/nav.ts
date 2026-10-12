@@ -10,6 +10,7 @@ export function nav(req: Request): string {
     ["/staff/label", "Label", ["admin", "nurse", "dada"]],
     ["/staff/clinic", "Check a pass", ["admin", "clinic"]],
     ["/staff/dashboard", "Dashboard", ["admin", "nurse", "partner"]],
+    ["/staff/models", "Models", ["admin", "nurse"]],
     ["/staff/content", "Content", ["admin", "reviewer", "editor"]],
     ["/staff/payments", "Payments", ["admin"]],
     ["/staff/admin", "Admin", ["admin"]],

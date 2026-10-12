@@ -1,6 +1,4 @@
-// Trains Ubah's own models and writes an honest accuracy report.
-//   npm run train                 -> seed data + any exported labels
-//   npm run train -- --export     -> first export nurse/Dada labels from the database
+// Trains Ubah's own models and writes an honest accuracy report (command line: src/ml/trainCli.ts).
 //
 // Data files (JSON lines: {"text","label","source","language"}):
 //   data/seed/<task>.jsonl      small English starter set, clearly marked "seed"
@@ -13,6 +11,11 @@ import { MODELS_DIR } from "./models.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const DATA_DIR = process.env.DATA_DIR ?? join(here, "../../data");
+
+export const TASKS = ["danger", "topic"] as const;
+export type Task = (typeof TASKS)[number];
+
+export const readSeed = (task: Task) => readJsonl(join(DATA_DIR, "seed", `${task}.jsonl`));
 
 function readJsonl(path: string): Example[] {
   if (!existsSync(path)) return [];
@@ -64,11 +67,4 @@ export function trainAll(log = console.log) {
     }
   }
   return reports;
-}
-
-if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
-  if (process.argv.includes("--export")) await exportLabels();
-  trainAll();
-  console.log("\nNote: seed-only results show the pipeline works; they are NOT evidence of real-world accuracy. Report numbers from labelled pilot data.");
-  process.exit(0);
 }

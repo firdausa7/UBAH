@@ -502,7 +502,7 @@ describe("clinic desk without internet", () => {
     expect((await ussd("+254711222333", `1*${code.slice(3)}*4826`)).text).toMatch(new RegExp(`^END ${code} VALID`));
     expect((await ussd("+254711222333", `2*${code.slice(3)}*4826`)).text).toMatch(/^END Recorded/);
     expect((await ussd("+254711222333", "9")).text).toMatch(/^END/);
-    expect((await ussd("+254799000000", "")).text).toMatch(/^END Ubah: to ask a private health question/);
+    expect((await ussd("+254799000000", "")).text).toMatch(/^CON Ubah\n1 Soomaali/); // girls get their own menu
     expect((await request(app).post("/webhooks/ussd").type("form").send({ text: "" })).status).toBe(400);
   });
 
