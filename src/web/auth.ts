@@ -7,7 +7,18 @@ import { readCookie } from "./cookies.js";
 // Staff sessions live in the database (only a hash of the token is stored), so logout,
 // deactivation and password changes end a session at once. No girl ever logs in.
 
-export type Role = "admin" | "nurse" | "dada" | "clinic" | "partner";
+export type Role = "admin" | "nurse" | "dada" | "clinic" | "partner" | "reviewer" | "editor";
+export const ROLES: Role[] = ["admin", "nurse", "dada", "clinic", "partner", "reviewer", "editor"];
+export const ALL_ROLES = ROLES;
+export const ROLE_LABEL: Record<Role, string> = {
+  admin: "Admin",
+  nurse: "Nurse",
+  dada: "Dada",
+  clinic: "Clinic desk",
+  partner: "Partner (reports only)",
+  reviewer: "Health-partner reviewer",
+  editor: "Content editor / translator",
+};
 export interface Staff {
   id: number;
   name: string;
@@ -15,15 +26,16 @@ export interface Staff {
   login: string;
   clinic_id: number | null;
   must_change_password: boolean;
+  languages: string[];
 }
 
 export type MfaMethod = "totp" | "sms" | null;
 
-// Admin, nurse and partner use an authenticator app; Dadas get an SMS code.
+// Admin, nurse, partner, reviewer and editor use an authenticator app; Dadas get an SMS code.
 // Clinic desks see only the services on a pass, so they log in with a password alone.
 export function mfaMethod(role: Role): MfaMethod {
   if (!config.security.mfaRequired) return null;
-  if (role === "admin" || role === "nurse" || role === "partner") return "totp";
+  if (role === "admin" || role === "nurse" || role === "partner" || role === "reviewer" || role === "editor") return "totp";
   if (role === "dada") return "sms";
   return null;
 }
@@ -71,7 +83,7 @@ export async function readSession(db: Db, req: Request): Promise<{ session: Sess
   if (!token || token.length > 100) return null;
   const [row] = await db.query(
     `SELECT s.token_hash, s.staff_id, s.mfa_passed, s.last_seen_at,
-            st.id, st.name, st.role, st.login, st.clinic_id, st.must_change_password
+            st.id, st.name, st.role, st.login, st.clinic_id, st.must_change_password, st.languages
        FROM staff_sessions s JOIN staff st ON st.id = s.staff_id
       WHERE s.token_hash = $1 AND s.revoked_at IS NULL AND s.expires_at > now()
         AND s.last_seen_at > now() - make_interval(mins => $2) AND st.active`,
@@ -84,7 +96,7 @@ export async function readSession(db: Db, req: Request): Promise<{ session: Sess
   }
   return {
     session: { token_hash: row.token_hash, staff_id: row.staff_id, mfa_passed: row.mfa_passed },
-    staff: { id: row.id, name: row.name, role: row.role, login: row.login, clinic_id: row.clinic_id, must_change_password: row.must_change_password },
+    staff: { id: row.id, name: row.name, role: row.role, login: row.login, clinic_id: row.clinic_id, must_change_password: row.must_change_password, languages: row.languages ?? [] },
   };
 }
 

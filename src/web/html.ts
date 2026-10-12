@@ -48,6 +48,22 @@ th{font-size:13px;font-weight:500;color:var(--muted)}.scroll{overflow-x:auto}
 .row{display:flex;flex-wrap:wrap;gap:10px;align-items:center}.between{justify-content:space-between}
 .notice{background:var(--soft);padding:12px 16px;border-radius:12px;margin-bottom:16px;font-size:15px}
 .pills a{min-height:38px;padding:0 16px;font-size:14px}
+.tag.draft{background:var(--soft)}.tag.in_review{background:#FFF4D6;color:#7A5200}.tag.approved{background:#E3ECFA;color:#1F4A7A}
+.tag.published{background:var(--okbg);color:var(--ok)}.tag.archived{background:#fff;color:var(--muted);border:1px solid var(--line)}
+.tag.paid{background:var(--okbg);color:var(--ok)}.tag.failed,.tag.cancelled{background:var(--warnbg);color:var(--warn)}.tag.processing{background:#FFF4D6;color:#7A5200}
+.fields{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:0 16px}
+.checks{display:flex;flex-wrap:wrap;gap:4px 16px}.checks label{font-weight:400}
+.cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px}
+.timeline{list-style:none;padding:0;margin:0}.timeline li{padding:8px 0;border-bottom:1px solid var(--line);font-size:15px}
+.timeline time{display:block;color:var(--muted);font-size:13px}
+.ok-notice{background:var(--okbg);color:var(--ok)}
+details summary{cursor:pointer;color:var(--ink);font-weight:600;min-height:44px;display:flex;align-items:center}
+button.small,.btn.small{min-height:36px;padding:0 14px;font-size:14px}
+button.danger{background:#fff;color:var(--warn);border-color:var(--warn)}
+.live{position:sticky;top:0;z-index:5}
+code{background:var(--soft);padding:2px 6px;border-radius:6px;font-size:14px}
+svg.chart text{font:12px "DM Sans",system-ui,sans-serif;fill:var(--muted)}
+@media print{header.top,.noprint{display:none}main{padding:0}.card{break-inside:avoid}}
 `;
 
 export function page(title: string, body: string, nav = ""): string {
@@ -58,3 +74,85 @@ export function page(title: string, body: string, nav = ""): string {
 <style>${CSS}</style></head><body>
 <header class="top"><a class="brand" href="/staff">ubah</a><nav>${nav}</nav></header><main>${body}</main></body></html>`;
 }
+
+// ---- Small form helpers (values are always escaped) ----
+
+export function field(label: string, name: string, value: unknown = "", opts: { type?: string; required?: boolean; hint?: string; attrs?: string } = {}) {
+  const id = `f-${name}`;
+  return `<div><label for="${id}">${esc(label)}</label><input id="${id}" name="${esc(name)}" type="${opts.type ?? "text"}" value="${esc(value)}"${opts.required ? " required" : ""}${opts.attrs ? ` ${opts.attrs}` : ""}>${opts.hint ? `<div class="muted">${esc(opts.hint)}</div>` : ""}</div>`;
+}
+
+export function textarea(label: string, name: string, value: unknown = "", opts: { rows?: number; required?: boolean; hint?: string } = {}) {
+  const id = `f-${name}`;
+  return `<div><label for="${id}">${esc(label)}</label><textarea id="${id}" name="${esc(name)}" rows="${opts.rows ?? 4}"${opts.required ? " required" : ""}>${esc(value)}</textarea>${opts.hint ? `<div class="muted">${esc(opts.hint)}</div>` : ""}</div>`;
+}
+
+export function select(label: string, name: string, options: Array<[string, string]>, selected: unknown = "", opts: { required?: boolean; blank?: string } = {}) {
+  const id = `f-${name}`;
+  const blank = opts.blank != null ? `<option value="">${esc(opts.blank)}</option>` : "";
+  return `<div><label for="${id}">${esc(label)}</label><select id="${id}" name="${esc(name)}"${opts.required ? " required" : ""}>${blank}${options
+    .map(([v, l]) => `<option value="${esc(v)}"${String(selected) === v ? " selected" : ""}>${esc(l)}</option>`)
+    .join("")}</select></div>`;
+}
+
+export function checks(legend: string, name: string, options: Array<[string, string]>, selected: string[] = []) {
+  return `<fieldset style="border:0;padding:0;margin:12px 0 0"><legend style="font-weight:600;color:var(--ink);font-size:15px;margin-bottom:6px">${esc(legend)}</legend><div class="checks">${options
+    .map(([v, l]) => `<label class="inline"><input type="checkbox" name="${esc(name)}" value="${esc(v)}"${selected.includes(v) ? " checked" : ""}> ${esc(l)}</label>`)
+    .join("")}</div></fieldset>`;
+}
+
+// Body values that may arrive once (string) or many times (array).
+export const many = (v: unknown): string[] => (Array.isArray(v) ? v.map(String) : v == null || v === "" ? [] : [String(v)]);
+
+// Messages shown after a redirect, chosen by key so nothing from the URL is ever echoed.
+const NOTICES: Record<string, string> = {
+  saved: "Saved.",
+  created: "Created.",
+  deactivated: "Deactivated.",
+  reactivated: "Reactivated.",
+  submitted: "Sent for review.",
+  approved: "Approved.",
+  returned: "Sent back to the author with your note.",
+  published: "Published. Girls receive this version from now on.",
+  uploaded: "Recording uploaded.",
+  claimed: "You are now handling this case.",
+  assigned: "Case assigned.",
+  unassigned: "Case is back in the shared queue.",
+  noted: "Note added.",
+  escalated: "Escalated to the nurse on call. They have been alerted.",
+  handled: "Marked as handled.",
+  reopened: "Case reopened.",
+  sent: "Message sent.",
+  "2fa-reset": "Two-step login reset. They set it up again at their next login.",
+  approved_batch: "Payouts approved.",
+  paying: "Payments sent to M-Pesa. Results arrive in a few minutes.",
+  retried: "Payout queued again.",
+  marked_paid: "Payout recorded as paid.",
+  cancelled: "Payout cancelled.",
+};
+const ERRORS: Record<string, string> = {
+  invalid: "Some details were missing or not valid. Please check and try again.",
+  exists: "That already exists.",
+  self: "You can't do that to your own account.",
+  own_work: "You can't approve your own work: another reviewer must approve it.",
+  state: "That can't be done in its current state (someone may have changed it). Reload and try again.",
+  placeholders: "The translation must keep every {placeholder} from the English text, exactly as written.",
+  file: "Upload an audio file (ogg, mp3, m4a, wav or webm) of at most 5 MB.",
+  no_phone: "This Dada has no valid phone number for M-Pesa. Add one on her staff page first.",
+};
+export function notice(query: Record<string, unknown>): string {
+  const ok = NOTICES[String(query.done ?? "")];
+  const err = ERRORS[String(query.error ?? "")];
+  return (ok ? `<div class="notice ok-notice" role="status">${esc(ok)}</div>` : "") + (err ? `<div class="notice" role="alert">${esc(err)}</div>` : "");
+}
+
+export const STATUS_LABEL: Record<string, string> = {
+  draft: "Draft",
+  in_review: "In review",
+  approved: "Approved",
+  published: "Published",
+  archived: "Archived",
+};
+export const statusTag = (s: string) => `<span class="tag ${esc(s)}">${esc(STATUS_LABEL[s] ?? s)}</span>`;
+
+export const when = (d: string | Date | null | undefined) => (d ? new Date(d).toISOString().replace("T", " ").slice(0, 16) + " UTC" : "—");

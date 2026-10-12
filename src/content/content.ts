@@ -1,30 +1,44 @@
-import { readdirSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
+import type { Db } from "../db.js";
 import { config } from "../config.js";
 import { tokenize } from "../ml/text.js";
 
-// Ubah answers ONLY from these content files. Each file is written from WHO / Ministry of Health
-// guidance and must be approved by a health partner (status: approved) before a pilot.
-// Translations live alongside as <id>.<lang>.md (e.g. periods-pain.so.md).
+// Ubah answers ONLY from health content in the database, written in the Content studio and
+// approved by a named health-partner reviewer. In production only Published versions are served.
+// (Outside production, ALLOW_DRAFT_CONTENT=true also serves the newest unpublished version, for testing.)
+// The markdown files in content/topics/ are only a starting point: they are imported as DRAFTS.
 
 export interface ContentItem {
-  id: string;
-  topic: string;
+  id: string; // topic id
+  versionId: number;
+  topic: string; // category
   title: string;
-  status: "draft" | "approved";
+  status: "draft" | "in_review" | "approved" | "published";
   language: string;
   services: string[];
   keywords: string[];
   sources: string;
   body: string;
-  audio?: string; // optional recorded voice answer (URL), recorded by a native speaker
+  audioMediaId: number | null; // recorded voice answer, if any
 }
 
 const here = dirname(fileURLToPath(import.meta.url));
 export const CONTENT_DIR = process.env.CONTENT_DIR ?? join(here, "../../content/topics");
 
-function parse(file: string, text: string): ContentItem {
+interface ParsedFile {
+  id: string;
+  topic: string;
+  title: string;
+  language: string;
+  services: string[];
+  keywords: string[];
+  sources: string;
+  body: string;
+}
+
+export function parseContentFile(file: string, text: string): ParsedFile {
   const m = text.match(/^---\n([\s\S]*?)\n---\n([\s\S]*)$/);
   if (!m) throw new Error(`Content file ${file} is missing its --- header`);
   const meta: Record<string, string> = {};
@@ -38,37 +52,72 @@ function parse(file: string, text: string): ContentItem {
     id: meta.id,
     topic: meta.topic,
     title: meta.title ?? meta.id,
-    status: meta.status === "approved" ? "approved" : "draft",
     language: meta.language ?? "en",
     services: list(meta.services),
     keywords: list(meta.keywords),
     sources: meta.sources ?? "",
     body: m[2].trim(),
-    audio: meta.audio || undefined,
   };
 }
 
-let cache: ContentItem[] | null = null;
-export function loadContent(dir = CONTENT_DIR): ContentItem[] {
-  if (cache && dir === CONTENT_DIR) return cache;
-  const items = readdirSync(dir)
-    .filter((f) => f.endsWith(".md"))
-    .map((f) => parse(f, readFileSync(join(dir, f), "utf8")));
-  if (dir === CONTENT_DIR) cache = items;
-  return items;
-}
-export function clearContentCache() {
-  cache = null;
+// Imports content files that aren't in the database yet, always as DRAFT (status in the file is ignored:
+// approval only happens in the studio, by a named reviewer). Returns the number of versions added.
+export async function importContentFiles(db: Db, dir = CONTENT_DIR, authorId: number | null = null): Promise<number> {
+  if (!existsSync(dir)) return 0;
+  let added = 0;
+  for (const f of readdirSync(dir).filter((x) => x.endsWith(".md")).sort()) {
+    const c = parseContentFile(f, readFileSync(join(dir, f), "utf8"));
+    await db.query(`INSERT INTO content_topics (id, category, services, created_by) VALUES ($1,$2,$3,$4) ON CONFLICT (id) DO NOTHING`, [c.id, c.topic, c.services, authorId]);
+    const [exists] = await db.query(`SELECT 1 FROM content_versions WHERE topic_id = $1 AND language = $2`, [c.id, c.language]);
+    if (exists) continue;
+    await db.query(
+      `INSERT INTO content_versions (topic_id, language, version, title, body, keywords, sources, status, author_id) VALUES ($1,$2,1,$3,$4,$5,$6,'draft',$7)`,
+      [c.id, c.language, c.title, c.body, c.keywords, c.sources, authorId],
+    );
+    added++;
+  }
+  return added;
 }
 
-export function usableContent(): ContentItem[] {
-  return loadContent().filter((c) => c.status === "approved" || config.allowDraftContent);
+// What girls can be sent right now.
+export async function loadServingContent(db: Db, allowDraft = config.allowDraftContent): Promise<ContentItem[]> {
+  const rows = await db.query(
+    `SELECT DISTINCT ON (v.topic_id, v.language)
+            v.id, v.topic_id, v.language, v.title, v.body, v.keywords, v.sources, v.status, v.audio_media_id, t.category, t.services
+       FROM content_versions v JOIN content_topics t ON t.id = v.topic_id
+      WHERE NOT t.archived AND v.status IN (${allowDraft ? "'published','approved','in_review','draft'" : "'published'"})
+      ORDER BY v.topic_id, v.language, (v.status = 'published') DESC, v.version DESC`,
+  );
+  return rows.map((r) => ({
+    id: r.topic_id,
+    versionId: r.id,
+    topic: r.category,
+    title: r.title,
+    status: r.status,
+    language: r.language,
+    services: r.services ?? [],
+    keywords: r.keywords ?? [],
+    sources: r.sources,
+    body: r.body,
+    audioMediaId: r.audio_media_id ?? null,
+  }));
 }
+
+// In-memory copy, refreshed by refreshCaches() (src/caches.ts).
+let serving: ContentItem[] = [];
+// Word statistics come from the whole English topic library (any status), so that scores stay
+// stable while only a few topics are published. Answers still come only from `serving`.
+let corpus: ContentItem[] = [];
+export function setServingContent(items: ContentItem[], library: ContentItem[] = items) {
+  serving = items;
+  corpus = library.filter((c) => c.language === "en");
+}
+export const servingContent = () => serving;
 
 // Pick the girl's language version when it exists, else English (and say so).
 export function localize(item: ContentItem, lang: string): { item: ContentItem; translated: boolean } {
   if (lang === item.language) return { item, translated: true };
-  const alt = usableContent().find((c) => c.id === item.id && c.language === lang);
+  const alt = serving.find((c) => c.id === item.id && c.language === lang);
   return alt ? { item: alt, translated: true } : { item, translated: lang === "en" };
 }
 
@@ -79,15 +128,19 @@ export interface Hit {
 }
 
 export function search(query: string, opts: { topic?: string; limit?: number } = {}): Hit[] {
-  const docs = usableContent().filter((c) => c.language === "en");
+  const docs = serving.filter((c) => c.language === "en");
   const q = tokenize(query);
   if (q.length === 0) return [];
-  const docTokens = docs.map((d) => tokenize(`${d.title} ${d.keywords.join(" ")} ${d.keywords.join(" ")} ${d.body}`));
-  const N = docs.length;
-  const avg = docTokens.reduce((a, t) => a + t.length, 0) / Math.max(N, 1);
+  const toksOf = (d: ContentItem) => tokenize(`${d.title} ${d.keywords.join(" ")} ${d.keywords.join(" ")} ${d.body}`);
+  const docTokens = docs.map(toksOf);
+  // Collection statistics over the whole library (plus the served docs, if the library is smaller).
+  const statsDocs = corpus.length >= docs.length ? corpus.map(toksOf) : docTokens;
+  const N = statsDocs.length;
+  const avg = statsDocs.reduce((a, t) => a + t.length, 0) / Math.max(N, 1);
   const df = new Map<string, number>();
-  for (const toks of docTokens) for (const t of new Set(toks)) df.set(t, (df.get(t) ?? 0) + 1);
-  const k1 = 1.2, b = 0.75;
+  for (const toks of statsDocs) for (const t of new Set(toks)) df.set(t, (df.get(t) ?? 0) + 1);
+  const k1 = 1.2,
+    b = 0.75;
   const hits = docs.map((item, i) => {
     const toks = docTokens[i];
     const tf = new Map<string, number>();
@@ -96,7 +149,8 @@ export function search(query: string, opts: { topic?: string; limit?: number } =
     for (const t of new Set(q)) {
       const f = tf.get(t) ?? 0;
       if (!f) continue;
-      const idf = Math.log(1 + (N - (df.get(t) ?? 0) + 0.5) / ((df.get(t) ?? 0) + 0.5));
+      const n = Math.min(df.get(t) ?? 1, N);
+      const idf = Math.log(1 + (N - n + 0.5) / (n + 0.5));
       score += idf * ((f * (k1 + 1)) / (f + k1 * (1 - b + (b * toks.length) / avg)));
     }
     if (score > 0 && opts.topic && item.topic === opts.topic) score *= 1.5;

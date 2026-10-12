@@ -11,6 +11,17 @@ import { parseWhatsAppWebhook, downloadWhatsAppMedia } from "./channels/whatsapp
 import { parseInboundSms } from "./channels/sms.js";
 import { staffRouter } from "./web/staff.js";
 import { loginRouter } from "./web/login.js";
+import { adminRouter } from "./web/admin.js";
+import { contentRouter } from "./web/content.js";
+import { stringsRouter } from "./web/strings.js";
+import { inboxRouter } from "./web/inbox.js";
+import { clinicRouter } from "./web/clinic.js";
+import { dashboardRouter } from "./web/dashboard.js";
+import { paymentsRouter } from "./web/payments.js";
+import { handleDeskSms, handleUssd } from "./clinicDesk.js";
+import { alertStaff } from "./channels/outbound.js";
+import { applyMpesaResult } from "./payments/mpesa.js";
+import { refreshCaches } from "./caches.js";
 import { simulatorRouter } from "./web/simulator.js";
 import { page, h1 } from "./web/html.js";
 import { csrfCookie, verifyCsrf } from "./security/csrf.js";
@@ -151,10 +162,38 @@ export function createApp(db: Db, opts: AppOptions = {}) {
     if (!m) return res.sendStatus(400);
     res.sendStatus(200);
     track(
-      handleIncoming(db, { channel: "sms", from: m.from, text: m.text.slice(0, 1600) }).catch((err) =>
-        log.error({ err: (err as Error).message, channel: "sms" }, "failed to handle message"),
-      ),
+      (async () => {
+        // Clinic desks check passes by SMS from their registered phone; everyone else is a girl.
+        const desk = await handleDeskSms(db, m.from, m.text.slice(0, 200));
+        if (desk !== null) await alertStaff(db, m.from, desk);
+        else await handleIncoming(db, { channel: "sms", from: m.from, text: m.text.slice(0, 1600) });
+      })().catch((err) => log.error({ err: (err as Error).message, channel: "sms" }, "failed to handle message")),
     );
+  });
+
+  // Africa's Talking USSD (clinic desk pass checks). Answers must come back within a few seconds.
+  app.post("/webhooks/ussd", async (req, res) => {
+    if (config.smsWebhookKey && !safeEqual(String(req.query.key ?? ""), config.smsWebhookKey)) return res.sendStatus(401);
+    const phone = String(req.body.phoneNumber ?? "");
+    if (!phone) return res.sendStatus(400);
+    try {
+      res.type("text/plain").send(await handleUssd(db, phone, String(req.body.text ?? "").slice(0, 100)));
+    } catch (err) {
+      log.error({ err: (err as Error).message, channel: "ussd" }, "failed to handle USSD");
+      res.type("text/plain").send("END Sorry, something went wrong. Please try again.");
+    }
+  });
+
+  // M-Pesa B2C results for Dada payments. The secret token in the path authenticates Safaricom's call.
+  app.post("/webhooks/mpesa/:token/:kind", async (req, res) => {
+    const kind = req.params.kind;
+    if (!safeEqual(String(req.params.token), config.mpesa.callbackToken) || (kind !== "result" && kind !== "timeout")) return res.sendStatus(404);
+    try {
+      await applyMpesaResult(db, kind, req.body);
+    } catch (err) {
+      log.error({ err: (err as Error).message }, "failed to record M-Pesa callback");
+    }
+    res.json({ ResultCode: 0, ResultDesc: "Accepted" });
   });
 
   if (config.simulator) app.use("/simulator", simulatorRouter(db));
@@ -168,6 +207,13 @@ export function createApp(db: Db, opts: AppOptions = {}) {
   app.use("/staff", csrfCookie, verifyCsrf);
   const loginLimiter = rateLimit({ name: "login", windowMs: 60_000, max: opts.loginPerMin ?? config.security.rateLimitLoginPerMin });
   app.use("/staff", loginRouter(db, { loginLimiter }));
+  app.use("/staff", adminRouter(db, { tokenLimiter: loginLimiter }));
+  app.use("/staff", inboxRouter(db));
+  app.use("/staff", clinicRouter(db));
+  app.use("/staff", dashboardRouter(db));
+  app.use("/staff", contentRouter(db));
+  app.use("/staff", stringsRouter(db));
+  app.use("/staff", paymentsRouter(db));
   app.use("/staff", staffRouter(db));
 
   // ---- Not found and errors ----
@@ -194,6 +240,7 @@ export interface Running {
 export async function start(): Promise<Running> {
   const db = await getDb(); // runs pending migrations
   if (config.seedDemo) await seedDemo(db);
+  await refreshCaches(db, { force: true });
   const app = createApp(db);
   const server = app.listen(config.port, () => {
     log.info({ url: config.baseUrl, staff: `${config.baseUrl}/staff/login`, simulator: config.simulator ? `${config.baseUrl}/simulator` : null }, "Ubah running");

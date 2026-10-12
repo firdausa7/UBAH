@@ -31,7 +31,9 @@ export const csrfField = (req: Request) => `<input type="hidden" name="_csrf" va
 
 export function verifyCsrf(req: Request, res: Response, next: NextFunction) {
   if (["GET", "HEAD", "OPTIONS"].includes(req.method)) return next();
-  const given = String(req.body?._csrf ?? req.headers["x-csrf-token"] ?? "");
+  // File uploads (multipart) carry the token in the form's action URL, since the body is parsed later.
+  const multipart = String(req.headers["content-type"] ?? "").startsWith("multipart/form-data");
+  const given = String(req.body?._csrf ?? (multipart ? req.query._csrf : undefined) ?? req.headers["x-csrf-token"] ?? "");
   if (!readCookie(req, COOKIE) || !given || !safeEqual(given, csrfToken(req))) {
     return res
       .status(403)

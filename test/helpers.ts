@@ -58,7 +58,7 @@ export interface StaffClient {
   agent: ReturnType<typeof request.agent>;
   csrf: string;
   get(path: string): ReturnType<ReturnType<typeof request.agent>["get"]>;
-  post(path: string, form?: Record<string, string>): ReturnType<ReturnType<typeof request.agent>["post"]>;
+  post(path: string, form?: Record<string, string | string[]>): ReturnType<ReturnType<typeof request.agent>["post"]>;
 }
 
 // Signs in through the real pages: CSRF token, password, then the second factor.

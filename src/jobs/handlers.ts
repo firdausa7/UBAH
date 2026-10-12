@@ -2,6 +2,7 @@ import type { Db } from "../db.js";
 import { config } from "../config.js";
 import { sendCheckin, sendDueCheckins } from "../engine.js";
 import { retryOutbox } from "../channels/outbound.js";
+import { applyMpesaResult, sendPayout } from "../payments/mpesa.js";
 import { enqueue, registerJob, RetryLater } from "./queue.js";
 import { log } from "../log.js";
 
@@ -9,6 +10,8 @@ import { log } from "../log.js";
 //   checkin.send    the day-3 check-in for one pass, scheduled when the pass is issued
 //   checkins.sweep  safety net: sends any due check-in that was missed, then schedules itself again
 //   outbox.retry    re-sends a failed message to a girl, or a failed urgent alert to a nurse
+//   mpesa.pay       sends one approved Dada payout to M-Pesa (at most once)
+//   mpesa.mock_result  mock mode only: M-Pesa's pretend "success" callback
 
 const sweepPeriodMs = () => config.jobs.checkinSweepMinutes * 60_000;
 
@@ -36,5 +39,15 @@ export function registerAllJobs() {
 
   registerJob("outbox.retry", async (db, job) => {
     await retryOutbox(db, job.payload);
+  });
+
+  registerJob("mpesa.pay", async (db, job) => {
+    await sendPayout(db, Number(job.payload.payoutId));
+  });
+
+  registerJob("mpesa.mock_result", async (db, job) => {
+    await applyMpesaResult(db, "result", {
+      Result: { ResultType: 0, ResultCode: 0, ResultDesc: "Mock: the service request is processed successfully.", OriginatorConversationID: job.payload.requestId, ConversationID: `MOCK`, TransactionID: `MOCK${Date.now().toString(36).toUpperCase()}` },
+    });
   });
 }

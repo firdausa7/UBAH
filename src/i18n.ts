@@ -1,13 +1,14 @@
 // Everything Ubah says outside the approved health content.
-// English is complete. Somali, Kiswahili and Afaan Oromoo MUST be translated by native speakers
-// and checked with girls before the pilot — missing keys fall back to English.
+// English (below) is the source text. Somali, Kiswahili and Afaan Oromoo are written in the
+// Translation studio by native speakers, approved by a reviewer and published; only published
+// translations are used (see src/caches.ts). Missing keys fall back to English.
 
 export const LANGUAGES: Record<string, string> = { so: "Soomaali", sw: "Kiswahili", en: "English", om: "Afaan Oromoo" };
 export const LANGUAGE_MENU: Array<[string, string]> = [["1", "so"], ["2", "sw"], ["3", "en"], ["4", "om"]];
 
 type Strings = Record<string, string>;
 
-const en: Strings = {
+export const en: Strings = {
   welcome:
     "Welcome to Ubah, a private place to ask about your body and health. Your name is not saved.\nChoose a language:\n1 Soomaali\n2 Kiswahili\n3 English\n4 Afaan Oromoo",
   language_set: "Thank you. Ask me anything about your body, periods, pregnancy, family planning or safety. You can type or send a voice note.",
@@ -38,14 +39,17 @@ const en: Strings = {
   deleted: "Your chats and passes have been deleted.",
   help: "Ubah commands:\nMENU - start again\nDADA - talk to a person\nSTOP - no more messages\nDELETE - delete your chats",
   invalid_choice: "Sorry, I didn't understand. {prompt}",
+  ussd_info: "Ubah: to ask a private health question, send HI by SMS or WhatsApp to this number.",
 };
 
-const translations: Record<string, Strings> = {
-  en,
-  so: {}, // TODO: Somali translation by native speakers
-  sw: {}, // TODO: Kiswahili translation
-  om: {}, // TODO: Afaan Oromoo translation
-};
+export const TRANSLATION_LANGUAGES = ["so", "sw", "om"] as const;
+
+let translations: Record<string, Strings> = { en };
+
+// Called by the cache refresh with the strings girls may be sent.
+export function setTranslations(byLang: Record<string, Strings>) {
+  translations = { ...byLang, en };
+}
 
 export function t(lang: string | null | undefined, key: string, vars: Record<string, string | number> = {}): string {
   const s = translations[lang ?? "en"]?.[key] ?? en[key] ?? key;

@@ -23,6 +23,11 @@ This repository started as the **functional prototype** for the UNICEF Femtech V
 | No names stored; phone numbers hashed + encrypted; STOP and DELETE commands | `src/privacy.ts`, `src/engine.ts` |
 | Two-step staff login, lockout, CSRF protection, append-only audit log | `src/web/login.ts`, `src/security/`, `src/audit.ts` |
 | Durable background jobs: check-ins, retries of failed messages and nurse alerts | `src/jobs/` |
+| Content, translation and glossary studios: nothing reaches girls until a named health-partner reviewer approves it and it is published | `src/web/content.ts`, `src/web/strings.ts`, `src/content/workflow.ts` |
+| Inbox with claim/assign, notes, history, live updates, one-button escalation to a nurse, and a protection pathway per site | `src/web/inbox.ts`, `src/cases.ts` |
+| Clinic desks check passes by SMS or USSD when they have no internet | `src/clinicDesk.ts` |
+| Dashboard with filters, trends, CSV and a monthly donor PDF; every count under 5 hidden | `src/web/dashboard.ts`, `src/stats.ts`, `src/reports/` |
+| Dada payments through M-Pesa B2C, approved in batches and reconciled | `src/web/payments.ts`, `src/payments/mpesa.ts` |
 
 ## Run it locally (no accounts needed)
 
@@ -35,13 +40,13 @@ npm run dev        # http://localhost:3000
 ```
 
 - **Simulator** (chat as a girl): http://localhost:3000/simulator
-- **Staff login**: http://localhost:3000/staff/login — logins `admin`, `nurse`, `dada`, `clinic-a`, `partner`; password `change-me-now` (set `DEMO_STAFF_PASSWORD` to change it)
+- **Staff login**: http://localhost:3000/staff/login — logins `admin`, `nurse`, `dada`, `clinic-a`, `partner`, `reviewer` (health-partner reviewer), `editor` (content editor / translator); password `change-me-now` (set `DEMO_STAFF_PASSWORD` to change it)
 
 With no keys set, everything runs in **mock mode**: answers come straight from the approved content, voice notes use the simulator's typed text, and messages are logged instead of sent. The database is embedded Postgres (PGlite) in `./.data`. Settings are read from `.env` if it exists (copy `.env.example`).
 
 **Two-step login is on by default, also locally:**
 
-- `admin`, `nurse` and `partner` set up an authenticator app (Aegis, FreeOTP, Google Authenticator…) the first time they log in, by scanning a QR code. They get 8 one-time recovery codes.
+- `admin`, `nurse`, `partner`, `reviewer` and `editor` set up an authenticator app (Aegis, FreeOTP, Google Authenticator…) the first time they log in, by scanning a QR code. They get 8 one-time recovery codes.
 - `dada` gets a 6-digit SMS code. In mock mode the code appears in the server log (`[sms:mock] Ubah login code: …`).
 - `clinic-a` (the clinic desk) uses a password only: it sees the services on a pass, never who the girl is.
 - For a quick local demo only, set `MFA_REQUIRED=false` in `.env`. Production refuses to start with it off.
@@ -62,6 +67,14 @@ docker compose exec app node --import tsx src/createAdmin.ts --login amina --nam
 
 `create-admin` prints a one-time password. The new admin must choose their own password and set up two-step login at first login. The app listens on `127.0.0.1:3000`: put a TLS reverse proxy (Caddy, nginx or a cloud load balancer) in front and set `TRUST_PROXY=1`.
 
+### Health content in production
+
+Production starts with no health content. Import the starter topics and glossary as **drafts**, then review and publish them in the Content studio:
+
+```bash
+npm run import-content    # or: docker compose exec app node --import tsx src/importContent.ts
+```
+
 ### Without Docker
 
 ```bash
@@ -78,6 +91,8 @@ npm start
 3. **AI**: any OpenAI-compatible API — `LLM_API_KEY` for OpenAI, or `LLM_BASE_URL` pointing at an open-weight model on vLLM or Ollama.
 4. **Speech-to-text**: `STT_API_KEY` (Whisper), or `STT_BASE_URL` for a self-hosted Whisper / Meta MMS model fine-tuned on Somali.
 5. **Nurse alerts**: `NURSE_ALERT_NUMBERS`.
+6. **USSD for clinic desks** (Africa's Talking): create a USSD service code and set its callback to `https://<your-host>/webhooks/ussd?key=<SMS_WEBHOOK_KEY>`.
+7. **Dada payments**: see [Dada payments](#dada-payments-m-pesa).
 
 ## How it is built
 
@@ -87,6 +102,39 @@ npm start
 - **Audit log** — `/staff/audit` (admins) shows every login, case view, reply sent (by message id), pass check, label and admin action. The table is append-only (a database trigger refuses edits and deletes) and never stores message text or phone numbers.
 - **Background jobs** — a Postgres-backed queue (`src/jobs/`) with retries, backoff, crash recovery and de-duplication. Each referral schedules its own day-3 check-in; a sweep every 15 minutes catches anything missed; failed messages to girls and failed nurse alerts are retried until delivered (nurse alerts up to 20 times). Several app instances can share the queue.
 - **Operations** — JSON logs (one line per event; no message text, phone numbers, cookies or keys), `X-Request-Id` on every response, `GET /health` (checks the database; 503 while down or shutting down) and `GET /health/live`. On `SIGTERM` the app stops taking requests, finishes in-flight work and the current job, then closes the database.
+
+## The staff platform
+
+Every page is server-rendered, works on a cheap Android phone on 3G, and shows each role only what it needs.
+
+| Role | Sees |
+|---|---|
+| Admin | Everything except approving content: staff, clinics, sites, payments, audit log, inbox, dashboard |
+| Nurse | Every case, labelling, dashboard |
+| Dada | Dada-level cases (safety, "talk to a person") and cases assigned to her; medical and self-harm cases go to nurses |
+| Clinic desk | Pass checks only, never who the girl is |
+| Partner | Dashboard, CSV and monthly PDF (aggregates only) |
+| Health-partner reviewer | Approves or returns content, translations and glossary terms; can never approve their own work |
+| Editor / translator | Writes content and translations, uploads recorded voice answers, publishes approved versions |
+
+- **Admin** (`/staff/admin`): invite staff with a one-time link (72 hours, optionally sent by SMS), change roles (ends their sessions), deactivate, reset a password (24-hour link) or two-step login, unlock. Clinics with services, hours, verified flag, Kenya Master Facility List code and site. Sites, each with its protection checklist and referral contacts; a contact stays "Not verified" until a staff member confirms it, and editing it clears that.
+- **Content studio** (`/staff/content`): Draft → In review → Approved (the reviewer's name, title and organisation are recorded) → Published. One published version per topic and language, full version history, the four languages side by side, a recorded voice answer per version. Translation studio (`/staff/translations`) works the same way for every message in `src/i18n.ts` and refuses a translation that drops a `{placeholder}`. Glossary studio (`/staff/glossary`) for coded words, verified by a reviewer.
+- **Inbox** (`/staff/inbox`): filters (urgent, mine, unassigned, language), claim, assign, return to the queue, internal notes, a full history per case, live updates (server-sent events), and **Escalate to nurse**, which alerts the nurses by SMS. Safety cases show the site's protection checklist (each step recorded) and its referral contacts.
+- **Clinic desk**: the web page, or from the clinic's registered phone with a desk PIN: SMS `CHECK UB-7K42 1234` / `SEEN UB-7K42 1234`, or the USSD menu. Wrong PINs lock the desk like wrong passwords.
+- **Dashboard** (`/staff/dashboard`): date range or presets, site/clinic/language filters, weekly trend charts with a table view, clinic dignity scores, **Download CSV**, **Monthly PDF report**. Counts from 1 to 4 are shown as "<5" everywhere, including exports.
+
+## Dada payments (M-Pesa)
+
+Handled cases create a payout (`DADA_PAY_PER_CASE_KES`); admins can also add one (e.g. a training day). On `/staff/payments` an admin approves payouts into a batch, then pays the batch through M-Pesa B2C. Results arrive on a callback; `/staff/payments/reconcile` lists anything failed or unanswered, with **retry**, **paid (enter the receipt from the M-Pesa portal)** or **cancel**. A request is sent to M-Pesa at most once automatically: if the outcome is unclear it is marked failed with a note to check the portal first, so no one is paid twice.
+
+Without keys, payments run in **mock mode** (marked paid with a `MOCK…` receipt) — development only; production refuses to send. To connect real M-Pesa:
+
+1. Your organisation needs a **Safaricom M-Pesa B2C (bulk disbursement) paybill or short code**. Apply through Safaricom Business (or your bank/aggregator); this needs company documents and can take a few weeks.
+2. Create an account at **developer.safaricom.co.ke** (Daraja), create an app with the **M-Pesa Sandbox** product, and note its **Consumer Key** and **Consumer Secret**.
+3. In the Daraja sandbox **Test credentials** page note the test **short code**, **initiator name**, and generate the **Security Credential** from the initiator password.
+4. Put them in `.env`: `MPESA_ENV=sandbox`, `MPESA_CONSUMER_KEY`, `MPESA_CONSUMER_SECRET`, `MPESA_SHORTCODE`, `MPESA_INITIATOR_NAME`, `MPESA_SECURITY_CREDENTIAL`, and `MPESA_CALLBACK_TOKEN` (`openssl rand -hex 16`). `BASE_URL` must be your public https address: Safaricom calls `https://<your-host>/webhooks/mpesa/<MPESA_CALLBACK_TOKEN>/result`.
+5. Pay a small sandbox batch and check it on the reconcile page.
+6. For real money, go live on the Daraja portal ("Go Live"), which links your production short code; then set `MPESA_ENV=production` with the production key, secret, initiator and security credential (generated with the production certificate).
 
 ## Training Ubah's models
 
@@ -105,16 +153,17 @@ npm test           # tests on embedded Postgres (PGlite)
 TEST_DATABASE_URL=postgres://user@localhost:5432/ubah_test npm test   # the same tests on a real Postgres server
 ```
 
-Covers the full loop (question → answer → pass → check-in → dignity score), danger handoffs, coded words, voice notes, STOP/DELETE, the webhooks and their authentication, every staff page and role, two-step login, lockout, CSRF, sessions, the audit log, migrations, config validation, the job queue and retries, health checks and graceful shutdown. A route inventory test fails if a route is added without being listed and tested, or if any form lacks a CSRF token.
+105 tests cover the full loop (question → answer → pass → check-in → dignity score), danger handoffs, coded words, voice notes, STOP/DELETE, the webhooks and their authentication, two-step login, lockout, CSRF, sessions, the audit log, migrations, config validation, the job queue and retries, health checks and graceful shutdown, and every Phase 2 page and action: staff invites and resets, clinics, sites and the protection pathway, the content/translation/glossary review workflow (including "only published content reaches girls"), voice uploads, the inbox (visibility, claim, assign, escalate, notes, live updates), SMS and USSD pass checks, dashboard filters, CSV and PDF, and M-Pesa payments (mock, real API shape, callbacks, reconciliation). A route inventory test fails if any of the 114 routes is added without being listed, if a page breaks for a role that should see it or opens for one that shouldn't, or if any form lacks a CSRF token.
 
 CI (`.github/workflows/ci.yml`) runs lint, typecheck and tests on both PGlite and Postgres 16, and builds the Docker image.
 
 ## Before a pilot — must do
 
-- [ ] Health partner reviews every file in `content/topics/` and sets `status: approved`; verify the hotline numbers.
-- [ ] Native speakers translate `src/i18n.ts` and the content into Somali, Kiswahili and Afaan Oromoo (add `<id>.so.md` files); test with girls.
-- [ ] Collect real coded words for `data/glossary.json` in community sessions.
-- [ ] Replace the demo clinics in `src/seed.ts` with verified partner clinics (with Kenya Master Facility List codes).
+- [ ] Import the starter content (`npm run import-content`); a health-partner reviewer reviews every topic in the Content studio and editors publish the approved ones; verify the hotline numbers in the text.
+- [ ] Native speakers translate every message in the Translation studio and the content into Somali, Kiswahili and Afaan Oromoo; reviewers who speak each language approve; test with girls.
+- [ ] Collect real coded words in community sessions and add them in the Glossary studio.
+- [ ] Add the verified partner clinics (with Kenya Master Facility List codes) and sites in Admin; agree each site's protection checklist and referral contacts with protection partners and mark contacts verified.
+- [ ] Register each clinic desk's phone and set desk PINs; set up M-Pesa (see [Dada payments](#dada-payments-m-pesa)).
 - [ ] Ethics approval; testing starts with young women aged 18+.
 - [ ] Data protection impact assessment (Kenya Data Protection Act 2019).
 - [ ] Generate production secrets (`openssl rand -hex 32` for each), create the first admin with `npm run create-admin`, and give every staff member their own account.
@@ -123,7 +172,7 @@ CI (`.github/workflows/ci.yml`) runs lint, typecheck and tests on both PGlite an
 ## Roadmap to a pilot
 
 - [x] **Phase 1 — Production foundations**: migrations, validated config, CSRF, rate limits, lockout, security headers, two-step login (TOTP and SMS), audit log, structured logs, health checks, graceful shutdown, Postgres job queue, Docker and CI.
-- [ ] **Phase 2 — Staff platform**: admin (staff, clinics), content, translation and glossary studios with review workflow, full inbox, protection pathway, clinic desk, dashboard exports, Dada payments.
+- [x] **Phase 2 — Staff platform**: admin (staff, clinics, sites), content, translation and glossary studios with review workflow, full inbox, protection pathway, clinic desk by SMS/USSD, dashboard filters, trends, CSV and PDF, Dada payments through M-Pesa.
 - [ ] **Phase 3 — Channels, AI and machine learning**: WhatsApp interactive menus and templates, SMS delivery reports, USSD, voice answers, multilingual retrieval, model registry.
 - [ ] **Phase 4 — Girl-facing app**: offline-capable PWA.
 - [ ] **Phase 5 — Pilot readiness**: end-to-end and load tests, deployment guide, DPIA, privacy notice and safeguarding drafts, demo mode.

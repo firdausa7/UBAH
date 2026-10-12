@@ -56,6 +56,15 @@ const EnvSchema = z.object({
 
   NURSE_ALERT_NUMBERS: list,
 
+  // M-Pesa B2C (Safaricom Daraja) for Dada payments.
+  MPESA_ENV: z.enum(["sandbox", "production"]).default("sandbox"),
+  MPESA_CONSUMER_KEY: z.string().default(""),
+  MPESA_CONSUMER_SECRET: z.string().default(""),
+  MPESA_SHORTCODE: z.string().default(""),
+  MPESA_INITIATOR_NAME: z.string().default(""),
+  MPESA_SECURITY_CREDENTIAL: z.string().default(""),
+  MPESA_CALLBACK_TOKEN: z.string().default(""),
+
   ENABLE_SIMULATOR: bool(false).optional(),
   SEED_DEMO: bool(true),
   DEMO_STAFF_PASSWORD: z.string().default("change-me-now"),
@@ -140,6 +149,17 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     // Shared secret for Africa's Talking callbacks: set the callback URL to /webhooks/sms?key=<this>.
     smsWebhookKey: e.SMS_WEBHOOK_KEY,
 
+    mpesa: {
+      env: e.MPESA_ENV,
+      consumerKey: e.MPESA_CONSUMER_KEY,
+      consumerSecret: e.MPESA_CONSUMER_SECRET,
+      shortcode: e.MPESA_SHORTCODE,
+      initiatorName: e.MPESA_INITIATOR_NAME,
+      securityCredential: e.MPESA_SECURITY_CREDENTIAL,
+      // Secret part of the callback URL: /webhooks/mpesa/<token>/result
+      callbackToken: e.MPESA_CALLBACK_TOKEN || "dev-mpesa-callback",
+    },
+
     // Who gets an SMS for urgent cases (comma-separated phone numbers).
     nurseAlertNumbers: e.NURSE_ALERT_NUMBERS,
 
@@ -187,6 +207,11 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     if (cfg.whatsapp.token && !cfg.whatsapp.appSecret) problems.push("WHATSAPP_APP_SECRET must be set so webhook signatures are checked");
     if (cfg.whatsapp.token && cfg.whatsapp.verifyToken === "ubah-verify") problems.push("WHATSAPP_VERIFY_TOKEN must be changed from the default");
     if (cfg.africasTalking.apiKey && !cfg.smsWebhookKey) problems.push("SMS_WEBHOOK_KEY must be set so SMS callbacks are authenticated");
+    if (cfg.mpesa.consumerKey) {
+      const missing = (["consumerSecret", "shortcode", "initiatorName", "securityCredential"] as const).filter((k) => !cfg.mpesa[k]);
+      if (missing.length) problems.push(`M-Pesa is switched on but these are missing: ${missing.map((k) => `MPESA_${k.replace(/[A-Z]/g, (c) => `_${c}`).toUpperCase()}`).join(", ")}`);
+      if (!e.MPESA_CALLBACK_TOKEN || e.MPESA_CALLBACK_TOKEN.length < 24) problems.push("MPESA_CALLBACK_TOKEN must be set to at least 24 random characters");
+    }
     if (problems.length) throw new ConfigError(problems);
   }
   return cfg;
@@ -214,4 +239,5 @@ export const mockMode = {
   stt: () => !config.stt.apiKey,
   whatsapp: () => !config.whatsapp.token,
   sms: () => !config.africasTalking.apiKey,
+  mpesa: () => !config.mpesa.consumerKey,
 };

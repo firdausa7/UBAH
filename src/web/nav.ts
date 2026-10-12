@@ -7,11 +7,13 @@ export function nav(req: Request): string {
   const s = staffOf(req);
   const links: Array<[string, string, string[]]> = [
     ["/staff/inbox", "Inbox", ["admin", "nurse", "dada"]],
-    ["/staff/label", "Label messages", ["admin", "nurse", "dada"]],
+    ["/staff/label", "Label", ["admin", "nurse", "dada"]],
     ["/staff/clinic", "Check a pass", ["admin", "clinic"]],
     ["/staff/dashboard", "Dashboard", ["admin", "nurse", "partner"]],
-    ["/staff/audit", "Audit log", ["admin"]],
-    ["/staff/password", "Password", ["admin", "nurse", "dada", "clinic", "partner"]],
+    ["/staff/content", "Content", ["admin", "reviewer", "editor"]],
+    ["/staff/payments", "Payments", ["admin"]],
+    ["/staff/admin", "Admin", ["admin"]],
+    ["/staff/account", "Account", ["admin", "nurse", "dada", "clinic", "partner", "reviewer", "editor"]],
   ];
   return (
     links.filter(([, , roles]) => roles.includes(s.role)).map(([href, label]) => `<a href="${href}">${label}</a>`).join("") +

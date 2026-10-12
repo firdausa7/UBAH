@@ -3,24 +3,8 @@ import type { Db } from "./db.js";
 import { log } from "./log.js";
 
 // Append-only record of who did what. Store references (ids), never message text or phone numbers.
-export type AuditAction =
-  | "login.success"
-  | "login.failed"
-  | "login.locked"
-  | "login.mfa_failed"
-  | "login.mfa_enrolled"
-  | "login.recovery_code_used"
-  | "login.sms_code_sent"
-  | "logout"
-  | "password.changed"
-  | "case.view"
-  | "case.reply"
-  | "case.handled"
-  | "pass.check"
-  | "pass.redeem"
-  | "label.save"
-  | "checkins.run"
-  | "audit.view";
+// Dotted names: area.verb, e.g. login.success, case.view, staff.create, content.publish.
+export type AuditAction = string;
 
 export interface AuditEntry {
   staffId?: number | null;

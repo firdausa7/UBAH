@@ -9,6 +9,8 @@ import { transcribe } from "./ai/stt.js";
 import { issuePass, SERVICE_MENU, TOPIC_SERVICES } from "./referrals.js";
 import { sendToUser, alertStaff, type UserRow } from "./channels/outbound.js";
 import { log } from "./log.js";
+import { refreshCaches } from "./caches.js";
+import { caseBus, caseEvent, levelFor, type CaseSignal } from "./cases.js";
 
 // The conversation engine: one function that handles every incoming message,
 // from any channel (WhatsApp, SMS, simulator).
@@ -59,6 +61,7 @@ const reply = async (db: Db, user: UserRow, body: string): Promise<void> => {
 };
 
 export async function handleIncoming(db: Db, msg: Incoming): Promise<void> {
+  await refreshCaches(db); // published content, translations and glossary
   const { user, isNew } = await getOrCreateUser(db, msg);
 
   // Voice note -> text (Somali speech model in the pilot).
@@ -216,13 +219,18 @@ const DRAFTS: Record<string, string> = {
 };
 
 async function openCase(db: Db, user: UserRow, reason: string, urgent: boolean, summary: string) {
-  const [c] = await db.query(`INSERT INTO cases (user_id, reason, urgent, summary, draft_reply) VALUES ($1,$2,$3,$4,$5) RETURNING id`, [
+  const level = levelFor(reason);
+  const [c] = await db.query(`INSERT INTO cases (user_id, reason, urgent, summary, draft_reply, level, site_id) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id`, [
     user.id,
     reason,
     urgent,
     summary.slice(0, 500),
     DRAFTS[reason] ?? "",
+    level,
+    (user as any).site_id ?? null,
   ]);
+  await caseEvent(db, c.id, null, "opened", { reason, urgent, level });
+  caseBus.emit("case", { id: c.id, urgent, level, kind: "opened" } satisfies CaseSignal);
   if (urgent) {
     const alert = `UBAH URGENT case #${c.id} (${reason.replace("danger_", "")}), girl ${user.anon_id}. Open: ${config.baseUrl}/staff/cases/${c.id}`;
     // Failed alerts are retried by the job queue; the case is also at the top of every inbox.

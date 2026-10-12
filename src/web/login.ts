@@ -8,13 +8,21 @@ import { DUMMY_PASSWORD_HASH, decryptSecret, encryptSecret, hashPassword, passwo
 import { newTotpSecret, otpauthUri, verifyTotp } from "../security/totp.js";
 import { csrfField } from "../security/csrf.js";
 import { sendSms } from "../channels/sms.js";
-import { createSession, endSession, mfaMethod, readSession, requirePendingSession, requireRole, revokeAllSessions, sessionOf, staffOf, upgradeSession, type Role } from "./auth.js";
+import { ALL_ROLES, createSession, endSession, mfaMethod, readSession, requirePendingSession, requireRole, revokeAllSessions, sessionOf, staffOf, upgradeSession, type Role } from "./auth.js";
 import { page, esc, h1 } from "./html.js";
 import { nav } from "./nav.js";
 
 // Staff sign-in: password, then a second factor (authenticator app or SMS code), then the app.
 
-export const HOME: Record<Role, string> = { admin: "/staff/inbox", nurse: "/staff/inbox", dada: "/staff/inbox", clinic: "/staff/clinic", partner: "/staff/dashboard" };
+export const HOME: Record<Role, string> = {
+  admin: "/staff/inbox",
+  nurse: "/staff/inbox",
+  dada: "/staff/inbox",
+  clinic: "/staff/clinic",
+  partner: "/staff/dashboard",
+  reviewer: "/staff/content",
+  editor: "/staff/content",
+};
 
 const SMS_CODE_MINUTES = 5;
 const SMS_CODE_MAX_ATTEMPTS = 5;
@@ -159,7 +167,9 @@ export function loginRouter(db: Db, opts: { loginLimiter: RequestHandler }): Rou
       ? `<div class="notice" role="alert">Wrong login or password. After ${config.security.loginMaxFailures} wrong tries an account is locked for ${config.security.loginLockMinutes} minutes.</div>`
       : req.query.expired
         ? `<div class="notice" role="alert">Your sign-in expired. Please log in again.</div>`
-        : "";
+        : req.query.done === "password"
+          ? `<div class="notice ok-notice" role="status">Password saved. Log in with your new password.</div>`
+          : "";
     res.send(
       page(
         "Staff login",
@@ -330,7 +340,7 @@ export function loginRouter(db: Db, opts: { loginLimiter: RequestHandler }): Rou
   });
 
   // ---- Change password (also forced after an admin reset or first login) ----
-  const anyStaff = requireRole(db, ["admin", "nurse", "dada", "clinic", "partner"]);
+  const anyStaff = requireRole(db, ALL_ROLES);
   const passwordPage = (req: Request, res: Response, error = "") => {
     const s = staffOf(req);
     res.send(

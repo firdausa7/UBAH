@@ -7,45 +7,134 @@ import { config } from "../src/config.js";
 import { staffRouter } from "../src/web/staff.js";
 import { loginRouter } from "../src/web/login.js";
 import { simulatorRouter } from "../src/web/simulator.js";
+import { adminRouter } from "../src/web/admin.js";
+import { contentRouter } from "../src/web/content.js";
+import { stringsRouter } from "../src/web/strings.js";
+import { inboxRouter } from "../src/web/inbox.js";
+import { clinicRouter } from "../src/web/clinic.js";
+import { dashboardRouter } from "../src/web/dashboard.js";
+import { paymentsRouter } from "../src/web/payments.js";
 import { trainAll } from "../src/ml/train.js";
 import { reloadModels } from "../src/ml/models.js";
 import type { Db } from "../src/db.js";
 
 // Every route in the app. Adding a route without adding it here (and testing it) fails this suite.
 const INVENTORY = [
-  "GET /health/live",
-  "GET /health",
   "GET /",
-  "GET /webhooks/whatsapp",
-  "POST /webhooks/whatsapp",
-  "POST /webhooks/sms",
+  "GET /health",
+  "GET /health/live",
   "GET /simulator/",
   "GET /simulator/app.js",
   "GET /simulator/history",
+  "GET /staff/",
+  "GET /staff/2fa",
+  "GET /staff/2fa/setup",
+  "GET /staff/account",
+  "GET /staff/admin",
+  "GET /staff/admin/clinics",
+  "GET /staff/admin/clinics/:id",
+  "GET /staff/admin/clinics/new",
+  "GET /staff/admin/sites",
+  "GET /staff/admin/sites/:id",
+  "GET /staff/admin/staff",
+  "GET /staff/admin/staff/:id",
+  "GET /staff/admin/staff/new",
+  "GET /staff/assets/live.js",
+  "GET /staff/audit",
+  "GET /staff/cases/:id",
+  "GET /staff/clinic",
+  "GET /staff/content",
+  "GET /staff/content/:topic",
+  "GET /staff/content/:topic/:lang/edit",
+  "GET /staff/content/new",
+  "GET /staff/content/review",
+  "GET /staff/content/versions/:id",
+  "GET /staff/dashboard",
+  "GET /staff/dashboard.csv",
+  "GET /staff/events",
+  "GET /staff/glossary",
+  "GET /staff/inbox",
+  "GET /staff/invite/:token",
+  "GET /staff/label",
+  "GET /staff/login",
+  "GET /staff/media/:id",
+  "GET /staff/password",
+  "GET /staff/payments",
+  "GET /staff/payments/batches/:id",
+  "GET /staff/payments/reconcile",
+  "GET /staff/reports/monthly.pdf",
+  "GET /staff/translations",
+  "GET /staff/translations/:key/:lang",
+  "GET /webhooks/whatsapp",
   "POST /simulator/send",
   "POST /simulator/skip",
-  "GET /staff/login",
-  "POST /staff/login",
-  "GET /staff/2fa",
   "POST /staff/2fa",
   "POST /staff/2fa/resend",
-  "GET /staff/2fa/setup",
   "POST /staff/2fa/setup",
-  "GET /staff/password",
-  "POST /staff/password",
-  "POST /staff/logout",
-  "GET /staff/",
-  "GET /staff/inbox",
-  "GET /staff/cases/:id",
+  "POST /staff/account/desk-pin",
+  "POST /staff/admin/clinics",
+  "POST /staff/admin/clinics/:id",
+  "POST /staff/admin/clinics/:id/deactivate",
+  "POST /staff/admin/clinics/:id/reactivate",
+  "POST /staff/admin/run-checkins",
+  "POST /staff/admin/sites",
+  "POST /staff/admin/sites/:id",
+  "POST /staff/admin/sites/:id/contacts",
+  "POST /staff/admin/sites/:id/contacts/:cid",
+  "POST /staff/admin/sites/:id/steps",
+  "POST /staff/admin/sites/:id/steps/:stepId",
+  "POST /staff/admin/staff",
+  "POST /staff/admin/staff/:id",
+  "POST /staff/admin/staff/:id/deactivate",
+  "POST /staff/admin/staff/:id/reactivate",
+  "POST /staff/admin/staff/:id/reset-2fa",
+  "POST /staff/admin/staff/:id/reset-password",
+  "POST /staff/admin/staff/:id/unlock",
+  "POST /staff/cases/:id/assign",
+  "POST /staff/cases/:id/claim",
+  "POST /staff/cases/:id/escalate",
+  "POST /staff/cases/:id/handled",
+  "POST /staff/cases/:id/notes",
+  "POST /staff/cases/:id/reopen",
   "POST /staff/cases/:id/reply",
-  "GET /staff/clinic",
+  "POST /staff/cases/:id/site",
+  "POST /staff/cases/:id/steps/:stepId",
+  "POST /staff/cases/:id/unassign",
   "POST /staff/clinic/check",
   "POST /staff/clinic/redeem",
-  "GET /staff/dashboard",
-  "POST /staff/admin/run-checkins",
-  "GET /staff/label",
+  "POST /staff/content",
+  "POST /staff/content/:topic/:lang",
+  "POST /staff/content/:topic/settings",
+  "POST /staff/content/versions/:id/approve",
+  "POST /staff/content/versions/:id/audio",
+  "POST /staff/content/versions/:id/audio/remove",
+  "POST /staff/content/versions/:id/discard",
+  "POST /staff/content/versions/:id/publish",
+  "POST /staff/content/versions/:id/return",
+  "POST /staff/content/versions/:id/submit",
+  "POST /staff/glossary",
+  "POST /staff/glossary/:id",
+  "POST /staff/invite/:token",
   "POST /staff/label",
-  "GET /staff/audit",
+  "POST /staff/login",
+  "POST /staff/logout",
+  "POST /staff/password",
+  "POST /staff/payments/:id/cancel",
+  "POST /staff/payments/:id/mark-paid",
+  "POST /staff/payments/:id/retry",
+  "POST /staff/payments/approve",
+  "POST /staff/payments/batches/:id/pay",
+  "POST /staff/payments/manual",
+  "POST /staff/translations/:key/:lang",
+  "POST /staff/translations/versions/:id/approve",
+  "POST /staff/translations/versions/:id/discard",
+  "POST /staff/translations/versions/:id/publish",
+  "POST /staff/translations/versions/:id/return",
+  "POST /staff/translations/versions/:id/submit",
+  "POST /webhooks/mpesa/:token/:kind",
+  "POST /webhooks/sms",
+  "POST /webhooks/ussd",
+  "POST /webhooks/whatsapp",
 ].sort();
 
 function routesOf(stack: any[], prefix = ""): string[] {
@@ -84,8 +173,17 @@ describe("route inventory", () => {
     const registered = [
       ...routesOf((app as any).router.stack),
       ...routesOf((simulatorRouter(db) as any).stack, "/simulator"),
-      ...routesOf((loginRouter(db, { loginLimiter: limiter }) as any).stack, "/staff"),
-      ...routesOf((staffRouter(db) as any).stack, "/staff"),
+      ...[
+        loginRouter(db, { loginLimiter: limiter }),
+        adminRouter(db, { tokenLimiter: limiter }),
+        inboxRouter(db),
+        clinicRouter(db),
+        dashboardRouter(db),
+        contentRouter(db),
+        stringsRouter(db),
+        paymentsRouter(db),
+        staffRouter(db),
+      ].flatMap((router: any) => routesOf(router.stack, "/staff")),
     ].sort();
     expect(registered).toEqual(INVENTORY);
   });
@@ -96,7 +194,41 @@ describe("route inventory", () => {
     await g.send("3");
     await g.send("i was raped last night");
     const [c] = await db.query(`SELECT id FROM cases ORDER BY id DESC LIMIT 1`);
+    const [site] = await db.query(`SELECT id FROM sites LIMIT 1`);
+    const [admin] = await db.query(`SELECT id FROM staff WHERE login = 'admin'`);
+    const [version] = await db.query(`SELECT id FROM content_versions ORDER BY id LIMIT 1`);
+    const [dada] = await db.query(`SELECT id FROM staff WHERE login = 'dada'`);
+    await db.query(`INSERT INTO dada_payouts (staff_id, amount_kes, reason) VALUES ($1, 100, 'page test')`, [dada.id]);
+    const [batch] = await db.query(`INSERT INTO payout_batches (created_by, total_kes, payouts) VALUES ($1, 0, 0) RETURNING id`, [admin.id]);
     const pages: Array<[string, string]> = [
+      ["admin", "/staff/admin"],
+      ["admin", "/staff/admin/staff"],
+      ["admin", "/staff/admin/staff/new"],
+      ["admin", `/staff/admin/staff/${admin.id}`],
+      ["admin", "/staff/admin/clinics"],
+      ["admin", "/staff/admin/clinics/new"],
+      ["admin", "/staff/admin/clinics/1"],
+      ["admin", "/staff/admin/sites"],
+      ["admin", `/staff/admin/sites/${site.id}`],
+      ["admin", "/staff/payments"],
+      ["admin", "/staff/payments?status=paid"],
+      ["admin", `/staff/payments/batches/${batch.id}`],
+      ["admin", "/staff/payments/reconcile"],
+      ["admin", "/staff/account"],
+      ["admin", "/staff/content"],
+      ["editor", "/staff/content"],
+      ["editor", "/staff/content/new"],
+      ["editor", "/staff/content/periods-pain"],
+      ["editor", "/staff/content/periods-pain/so/edit"],
+      ["editor", `/staff/content/versions/${version.id}`],
+      ["editor", "/staff/translations"],
+      ["editor", "/staff/translations/welcome/so"],
+      ["editor", "/staff/glossary"],
+      ["reviewer", "/staff/content/review"],
+      ["reviewer", `/staff/content/versions/${version.id}`],
+      ["reviewer", "/staff/glossary"],
+      ["clinic-a", "/staff/account"],
+      ["partner", "/staff/dashboard?days=7"],
       ["admin", "/staff/inbox"],
       ["admin", "/staff/inbox?status=handled"],
       ["admin", `/staff/cases/${c.id}`],
@@ -122,6 +254,15 @@ describe("route inventory", () => {
 
   it("blocks each role from pages it shouldn't see", async () => {
     const denied: Array<[string, string]> = [
+      ["editor", "/staff/inbox"],
+      ["editor", "/staff/admin"],
+      ["reviewer", "/staff/payments"],
+      ["reviewer", "/staff/dashboard"],
+      ["partner", "/staff/content"],
+      ["partner", "/staff/admin/staff"],
+      ["clinic-a", "/staff/content"],
+      ["clinic-a", "/staff/payments"],
+      ["nurse", "/staff/admin/clinics"],
       ["clinic-a", "/staff/inbox"],
       ["clinic-a", "/staff/dashboard"],
       ["partner", "/staff/inbox"],
@@ -138,6 +279,8 @@ describe("route inventory", () => {
   it("sends each role to its home page from /staff and / goes to login", async () => {
     expect((await (await as("clinic-a")).get("/staff/")).headers.location).toBe("/staff/clinic");
     expect((await (await as("partner")).get("/staff/")).headers.location).toBe("/staff/dashboard");
+    expect((await (await as("editor")).get("/staff/")).headers.location).toBe("/staff/content");
+    expect((await (await as("reviewer")).get("/staff/")).headers.location).toBe("/staff/content");
     expect((await request(app).get("/")).headers.location).toBe("/staff/login");
     expect((await request(app).get("/staff/cases/abc").set("Cookie", "")).status).toBe(302);
   });
