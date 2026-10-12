@@ -1,0 +1,57 @@
+{
+  "task": "danger",
+  "folds": 5,
+  "examples": 75,
+  "sources": {
+    "seed": 75
+  },
+  "accuracy": 0.6266666666666667,
+  "perLabel": {
+    "medical": {
+      "precision": 0.3870967741935484,
+      "recall": 0.8,
+      "support": 15
+    },
+    "none": {
+      "precision": 0.8888888888888888,
+      "recall": 0.5333333333333333,
+      "support": 30
+    },
+    "safety": {
+      "precision": 0.75,
+      "recall": 0.4,
+      "support": 15
+    },
+    "selfharm": {
+      "precision": 0.7222222222222222,
+      "recall": 0.8666666666666667,
+      "support": 15
+    }
+  },
+  "confusion": {
+    "medical": {
+      "medical": 12,
+      "none": 2,
+      "safety": 1,
+      "selfharm": 0
+    },
+    "none": {
+      "medical": 11,
+      "none": 16,
+      "safety": 1,
+      "selfharm": 2
+    },
+    "safety": {
+      "medical": 6,
+      "none": 0,
+      "safety": 6,
+      "selfharm": 3
+    },
+    "selfharm": {
+      "medical": 2,
+      "none": 0,
+      "safety": 0,
+      "selfharm": 13
+    }
+  }
+}

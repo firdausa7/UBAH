@@ -1,0 +1,111 @@
+{
+  "task": "topic",
+  "folds": 5,
+  "examples": 84,
+  "sources": {
+    "seed": 84
+  },
+  "accuracy": 0.5119047619047619,
+  "perLabel": {
+    "body": {
+      "precision": 0.30303030303030304,
+      "recall": 0.8333333333333334,
+      "support": 12
+    },
+    "family_planning": {
+      "precision": 0.6363636363636364,
+      "recall": 0.5833333333333334,
+      "support": 12
+    },
+    "feelings": {
+      "precision": 0.6,
+      "recall": 0.5,
+      "support": 12
+    },
+    "periods": {
+      "precision": 0.8,
+      "recall": 0.6666666666666666,
+      "support": 12
+    },
+    "pregnancy": {
+      "precision": 0.7,
+      "recall": 0.5833333333333334,
+      "support": 12
+    },
+    "safety": {
+      "precision": 0,
+      "recall": 0,
+      "support": 12
+    },
+    "sti": {
+      "precision": 0.7142857142857143,
+      "recall": 0.4166666666666667,
+      "support": 12
+    }
+  },
+  "confusion": {
+    "body": {
+      "body": 10,
+      "family_planning": 0,
+      "feelings": 1,
+      "periods": 1,
+      "pregnancy": 0,
+      "safety": 0,
+      "sti": 0
+    },
+    "family_planning": {
+      "body": 3,
+      "family_planning": 7,
+      "feelings": 0,
+      "periods": 0,
+      "pregnancy": 1,
+      "safety": 1,
+      "sti": 0
+    },
+    "feelings": {
+      "body": 5,
+      "family_planning": 0,
+      "feelings": 6,
+      "periods": 0,
+      "pregnancy": 0,
+      "safety": 1,
+      "sti": 0
+    },
+    "periods": {
+      "body": 1,
+      "family_planning": 2,
+      "feelings": 0,
+      "periods": 8,
+      "pregnancy": 1,
+      "safety": 0,
+      "sti": 0
+    },
+    "pregnancy": {
+      "body": 1,
+      "family_planning": 1,
+      "feelings": 1,
+      "periods": 1,
+      "pregnancy": 7,
+      "safety": 0,
+      "sti": 1
+    },
+    "safety": {
+      "body": 8,
+      "family_planning": 1,
+      "feelings": 2,
+      "periods": 0,
+      "pregnancy": 0,
+      "safety": 0,
+      "sti": 1
+    },
+    "sti": {
+      "body": 5,
+      "family_planning": 0,
+      "feelings": 0,
+      "periods": 0,
+      "pregnancy": 1,
+      "safety": 1,
+      "sti": 5
+    }
+  }
+}

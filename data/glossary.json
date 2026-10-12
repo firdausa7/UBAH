@@ -1,0 +1,16 @@
+{
+  "_about": "Coded words and euphemisms girls use, mapped to plain meaning so Ubah does not miss a concern. English entries are common examples. Somali, Kiswahili and Afaan Oromoo entries MUST be collected from girls and Dadas in community sessions and checked by a health partner - do not guess them. Released under CC BY 4.0.",
+  "entries": [
+    { "term": "auntie flo", "language": "en", "means": "period", "topic": "periods", "verified": false },
+    { "term": "monthly visitor", "language": "en", "means": "period", "topic": "periods", "verified": false },
+    { "term": "time of the month", "language": "en", "means": "period", "topic": "periods", "verified": false },
+    { "term": "on my days", "language": "en", "means": "period", "topic": "periods", "verified": false },
+    { "term": "my days", "language": "en", "means": "period", "topic": "periods", "verified": false },
+    { "term": "the visitor did not come", "language": "en", "means": "missed period", "topic": "periods", "verified": false },
+    { "term": "down there", "language": "en", "means": "private parts", "topic": "body", "verified": false },
+    { "term": "slept with", "language": "en", "means": "had sex", "topic": "family_planning", "verified": false },
+    { "term": "did it", "language": "en", "means": "had sex", "topic": "family_planning", "verified": false },
+    { "term": "in trouble", "language": "en", "means": "pregnant", "topic": "pregnancy", "verified": false },
+    { "term": "the thing broke", "language": "en", "means": "condom broke", "topic": "family_planning", "verified": false }
+  ]
+}
