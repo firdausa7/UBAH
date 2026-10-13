@@ -1,6 +1,10 @@
 node_modules/
 .data/
+# Real settings and secrets never go to Git (only the blank template .env.example does)
 .env
+.env.*
+*.env
+!.env.example
 data/labeled/
 *.log
 data/stt-eval/
