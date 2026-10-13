@@ -138,7 +138,7 @@ export function createApp(db: Db, opts: AppOptions = {}) {
     if (req.query.format === "prometheus") return res.type("text/plain; version=0.0.4").send(opsPrometheus(s));
     res.status(s.ok ? 200 : 503).json(s);
   });
-  app.use(landingRouter());
+  app.use(landingRouter(db));
 
   // ---- Webhooks ----
   const webhookLimiter = rateLimit({ name: "webhooks", windowMs: 60_000, max: opts.webhookPerMin ?? config.security.rateLimitWebhookPerMin });

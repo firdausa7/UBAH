@@ -1,10 +1,14 @@
 import { Router } from "express";
+import type { Db } from "../db.js";
 import { config } from "../config.js";
+import { refreshCaches } from "../caches.js";
+import { LANGUAGES, t } from "../i18n.js";
 import { esc } from "./html.js";
 
 // The public landing page at "/": the Ubah story (ubah is Somali for "flower"), how the closed loop
-// works, how to reach Ubah, and the privacy promise. Contact details come from settings, so nothing
-// made-up is ever shown: a channel without a number says "coming soon".
+// works, how to reach Ubah, and the privacy promise. Every sentence is a "land_…" string in the
+// Translation studio (?lang=so|sw|om|en); untranslated sentences show in English. Contact details come
+// from settings, so nothing made-up is ever shown: a channel without a number says "coming soon".
 
 // A simple flower: six coral petals around a navy centre, on a stem.
 export const FLOWER_SVG = (size: number, label = "") => `<svg width="${size}" height="${size}" viewBox="0 0 120 120" ${label ? `role="img" aria-label="${esc(label)}"` : 'aria-hidden="true"'}>
@@ -19,27 +23,19 @@ const QUICK_EXIT_JS = `document.querySelectorAll("[data-quick-exit]").forEach(fu
   b.addEventListener("click", function (e) { e.preventDefault(); location.replace("https://www.google.com/search?q=weather+today"); });
 });`;
 
-function channelCards(): string {
+export function landingPage(lang: string): string {
+  const L = (key: string, vars: Record<string, string> = {}) => esc(t(lang, key, vars));
   const p = config.public;
-  const cards: Array<[string, string, string | null]> = [
-    ["SMS", "Send <strong>HI</strong> to", p.smsNumber],
-    ["WhatsApp", "Message", p.whatsappNumber],
-    ["Any phone (USSD)", "Dial", p.ussdCode],
-  ];
-  return cards
-    .map(
-      ([name, verb, value]) => `<div class="channel"><div class="eyebrow">${name}</div>${
-        value ? `<p>${verb} <strong class="big">${esc(value)}</strong></p>` : `<p class="muted">Coming soon</p>`
-      }</div>`,
-    )
+  const anyChannel = Boolean(p.smsNumber || p.whatsappNumber || p.ussdCode);
+  const channel = (name: string, how: string, value: string) =>
+    `<div class="channel"><div class="eyebrow">${name}</div>${value ? `<p>${how} <strong class="big">${esc(value)}</strong></p>` : `<p class="muted">${L("land_coming_soon")}</p>`}</div>`;
+  const step = (n: number, key: string, highlight = false) => `<li${highlight ? ' class="key"' : ""}><h3>${L(`land_step${n}_title`)}</h3><p>${L(`land_step${n}_body`)}</p></li>`;
+  const langs = Object.entries(LANGUAGES)
+    .map(([code, name]) => `<a href="/?lang=${code}" lang="${code}"${code === lang ? ' aria-current="true"' : ""}>${esc(name)}</a>`)
     .join("");
-}
-
-export function landingPage(): string {
-  const anyChannel = Boolean(config.public.smsNumber || config.public.whatsappNumber || config.public.ussdCode);
-  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Ubah · private health help for girls</title>
-<meta name="description" content="Ubah — Somali for 'flower' — gives girls and young women in northern Kenya private answers about their health, a referral pass to a partner clinic, and checks they were cared for with respect.">
+  return `<!doctype html><html lang="${esc(lang)}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Ubah · ${L("land_title_tag")}</title>
+<meta name="description" content="${L("land_lead")}">
 <meta name="referrer" content="no-referrer">
 <link rel="icon" href="/app/icon.svg" type="image/svg+xml">
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -49,9 +45,10 @@ export function landingPage(): string {
 *{box-sizing:border-box}
 body{margin:0;font:17px/1.55 "DM Sans",system-ui,-apple-system,"Segoe UI",sans-serif;color:var(--text);background:var(--bg);-webkit-font-smoothing:antialiased}
 a{color:var(--ink);text-underline-offset:3px}
-header{position:sticky;top:0;z-index:5;display:flex;align-items:center;justify-content:space-between;padding:12px 20px;background:rgba(247,246,244,.94);border-bottom:1px solid var(--line)}
+header{position:sticky;top:0;z-index:5;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 20px;background:rgba(247,246,244,.94);border-bottom:1px solid var(--line)}
 .brand{display:flex;align-items:center;gap:8px;font-weight:700;font-size:24px;color:var(--accent);text-decoration:none;letter-spacing:-.5px}
-.exit{min-height:44px;padding:0 16px;border-radius:999px;border:2px solid var(--ink);background:#fff;color:var(--ink);font:inherit;font-weight:700;font-size:15px;text-decoration:none;display:inline-flex;align-items:center}
+.langs{display:flex;flex-wrap:wrap;gap:4px 14px;font-size:14px}.langs a{color:var(--muted);text-decoration:none;min-height:32px;display:inline-flex;align-items:center}.langs a[aria-current]{color:var(--ink);font-weight:700}
+.exit{min-height:44px;padding:0 16px;border-radius:999px;border:2px solid var(--ink);background:#fff;color:var(--ink);font:inherit;font-weight:700;font-size:15px;text-decoration:none;display:inline-flex;align-items:center;white-space:nowrap}
 main{max-width:1040px;margin:0 auto;padding:0 20px 64px}
 section{padding:56px 0;border-bottom:1px solid var(--line)}
 section:last-child{border-bottom:0}
@@ -83,82 +80,69 @@ h3{font-size:19px;color:var(--ink);margin:10px 0 6px}
 .partners{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px}
 .card{background:#fff;border:1px solid var(--line);border-radius:18px;padding:22px}
 footer{max-width:1040px;margin:0 auto;padding:28px 20px 48px;font-size:14px;color:var(--muted);display:flex;flex-wrap:wrap;gap:12px 24px;justify-content:space-between}
-@media (max-width:720px){.hero{grid-template-columns:1fr}.hero svg{max-width:200px;order:-1}section{padding:40px 0}}
+@media (max-width:720px){.hero{grid-template-columns:1fr}.hero svg{max-width:200px;order:-1}section{padding:40px 0}header{flex-wrap:wrap}.langs{order:3;width:100%}}
 </style></head><body>
-<header><a class="brand" href="/">${FLOWER_SVG(30)}ubah</a><a class="exit" href="https://www.google.com/search?q=weather+today" data-quick-exit rel="noreferrer">Quick exit</a></header>
+<header><a class="brand" href="/?lang=${esc(lang)}">${FLOWER_SVG(30)}ubah</a><nav class="langs" aria-label="Language">${langs}</nav><a class="exit" href="https://www.google.com/search?q=weather+today" data-quick-exit rel="noreferrer">${L("app_quick_exit")}</a></header>
 <main>
 
 <section class="hero">
 <div>
-<p class="meaning"><em>Ubah</em> (oo-BAH) means <strong>flower</strong> in Somali.</p>
-<h1><em>Private</em> health help, and care that's checked.</h1>
-<p class="lead">Ubah gives girls and young women in northern Kenya private answers about their bodies and health — by voice note, chat, SMS or a basic phone — sends them to a trusted clinic with a free pass, and checks that they were seen and treated with respect.</p>
-<div class="btns"><a class="btn accent" href="/app/">Open the Ubah app</a><a class="btn secondary" href="#reach">Other ways to reach Ubah</a></div>
+<p class="meaning">${L("land_meaning")}</p>
+<h1><em>${L("land_h1_em")}</em> ${L("land_h1_rest")}</h1>
+<p class="lead">${L("land_lead")}</p>
+<div class="btns"><a class="btn accent" href="/app/">${L("land_open_app")}</a><a class="btn secondary" href="#reach">${L("land_other_ways")}</a></div>
 </div>
-${FLOWER_SVG(320, "A coral flower, Ubah's symbol")}
+${FLOWER_SVG(320, t(lang, "land_flower_alt"))}
 </section>
 
 <section aria-labelledby="story">
-<div class="eyebrow">Our story</div>
-<h2 id="story"><em>Why</em> a flower?</h2>
-<div class="story">
-<p>A flower grows when it gets what it needs at the right time: water, light, and a safe place to put down roots. Girls are the same. With the right information, care that respects them, and somewhere safe to ask, they grow up healthy and strong.</p>
-<p>For many refugee and pastoralist girls, that care is hard to reach. Help is in a language they don't read, questions feel too private to ask out loud, and after a referral no one checks whether they were actually helped — or how they were treated.</p>
-<p>Ubah is built to tend that whole journey: an answer in her own language, a referral to a clinic she can trust, and a gentle check-in afterwards. Every check-in helps clinics become places where more girls can grow.</p>
-</div>
+<div class="eyebrow">${L("land_story_eyebrow")}</div>
+<h2 id="story"><em>${L("land_story_h_em")}</em> ${L("land_story_h_rest")}</h2>
+<div class="story"><p>${L("land_story_1")}</p><p>${L("land_story_2")}</p><p>${L("land_story_3")}</p></div>
 </section>
 
 <section aria-labelledby="how">
-<div class="eyebrow">How it works</div>
-<h2 id="how"><em>One</em> closed loop</h2>
-<ol class="loop">
-<li><h3>Ask privately</h3><p>A girl asks in Somali, Kiswahili, Afaan Oromoo or English — by voice note or text. Answers come only from information checked by health partners.</p></li>
-<li><h3>Get a pass</h3><p>If she needs care, she gets a free referral pass for a verified, youth-friendly partner clinic. She shows the code at the desk — no need to explain again.</p></li>
-<li><h3>A person when it matters</h3><p>Danger signs — heavy bleeding, violence, thoughts of self-harm — go straight to a trained Dada or nurse, never to a machine alone.</p></li>
-<li class="key"><h3>We check back</h3><p>Three days later, Ubah asks: did you go, and were you treated with respect? Her anonymous answer becomes each clinic's dignity score.</p></li>
-</ol>
+<div class="eyebrow">${L("land_how_eyebrow")}</div>
+<h2 id="how"><em>${L("land_how_h_em")}</em> ${L("land_how_h_rest")}</h2>
+<ol class="loop">${step(1, "")}${step(2, "")}${step(3, "")}${step(4, "", true)}</ol>
 </section>
 
 <section aria-labelledby="reach" id="reach">
-<div class="eyebrow">Reach Ubah</div>
-<h2><em>Any</em> phone works</h2>
-<p class="muted">${anyChannel ? "Free and private. No name, no account." : "Ubah is being tested. These ways to reach Ubah open soon."}</p>
-<div class="channels">${channelCards()}<div class="channel"><div class="eyebrow">Smartphone</div><p><a href="/app/"><strong>Open the Ubah app</strong></a> — add it to your home screen.</p></div></div>
+<div class="eyebrow">${L("land_reach_eyebrow")}</div>
+<h2><em>${L("land_reach_h_em")}</em> ${L("land_reach_h_rest")}</h2>
+<p class="muted">${anyChannel ? L("land_reach_live") : L("land_reach_soon")}</p>
+<div class="channels">${channel("SMS", L("land_sms_how"), p.smsNumber)}${channel("WhatsApp", L("land_whatsapp_how"), p.whatsappNumber)}${channel(L("land_ussd_name"), L("land_ussd_how"), p.ussdCode)}
+<div class="channel"><div class="eyebrow">${L("land_smartphone")}</div><p><a href="/app/"><strong>${L("land_open_app")}</strong></a> — ${L("land_add_home")}</p></div></div>
 </section>
 
 <section aria-labelledby="privacy">
-<div class="eyebrow">Our promise</div>
-<h2 id="privacy"><em>Your</em> privacy comes first</h2>
-<ul class="promise">
-<li>We never ask your name. Staff see a short code, not who you are.</li>
-<li>Your phone number is scrambled and locked away.</li>
-<li>Clinics see only your pass code and the help you need.</li>
-<li>Send <strong>STOP</strong> to stop messages, <strong>DELETE</strong> to erase your chats.</li>
-<li>Lock the app with a PIN. <strong>Quick exit</strong> leaves at once.</li>
-<li>Clinic scores only show when five or more girls have answered.</li>
-</ul>
+<div class="eyebrow">${L("land_promise_eyebrow")}</div>
+<h2 id="privacy"><em>${L("land_promise_h_em")}</em> ${L("land_promise_h_rest")}</h2>
+<ul class="promise">${[1, 2, 3, 4, 5, 6].map((n) => `<li>${L(`land_promise_${n}`)}</li>`).join("")}</ul>
 </section>
 
 <section aria-labelledby="partners">
-<div class="eyebrow">For partners</div>
-<h2 id="partners"><em>Grow</em> it with us</h2>
+<div class="eyebrow">${L("land_partners_eyebrow")}</div>
+<h2 id="partners"><em>${L("land_partners_h_em")}</em> ${L("land_partners_h_rest")}</h2>
 <div class="partners">
-<div class="card"><h3>Clinics</h3><p>Become a verified Ubah partner clinic: receive girls with a clear referral pass, and see — privately — how girls rate the respect they were shown.</p></div>
-<div class="card"><h3>Health and protection partners</h3><p>Review and approve Ubah's health answers, agree safe referral pathways, and receive anonymous reports on what girls need.</p></div>
-<div class="card"><h3>Ubah team</h3><p>Dadas, nurses, clinic desks and partners sign in here.</p><p><a class="btn secondary" href="/staff/login">Staff login</a></p></div>
+<div class="card"><h3>${L("land_clinics_title")}</h3><p>${L("land_clinics_body")}</p></div>
+<div class="card"><h3>${L("land_health_title")}</h3><p>${L("land_health_body")}</p></div>
+<div class="card"><h3>${L("land_team_title")}</h3><p>${L("land_team_body")}</p><p><a class="btn secondary" href="/staff/login">${L("land_staff_login")}</a></p></div>
 </div>
 </section>
 </main>
-<footer><span>Ubah is open source and built by HPI-SOLUTIONS KE LIMITED, Nairobi, Kenya.${config.public.contactEmail ? ` Contact: <a href="mailto:${esc(config.public.contactEmail)}">${esc(config.public.contactEmail)}</a>` : ""}</span><span>If you are in danger now, go to the nearest clinic or a person you trust.</span></footer>
+<footer><span>${L("land_footer_built")}${p.contactEmail ? ` <a href="mailto:${esc(p.contactEmail)}">${esc(p.contactEmail)}</a>` : ""}</span><span>${L("land_footer_danger")}</span></footer>
 <script src="/landing.js" defer></script>
 </body></html>`;
 }
 
-export function landingRouter(): Router {
+export function landingRouter(db: Db): Router {
   const r = Router();
-  r.get("/", (_req, res) => {
+  r.get("/", async (req, res) => {
+    await refreshCaches(db); // published translations
+    const lang = String(req.query.lang ?? "en") in LANGUAGES ? String(req.query.lang) : "en";
     res.setHeader("Cache-Control", "public, max-age=300");
-    res.type("html").send(landingPage());
+    res.type("html").send(landingPage(lang));
   });
   r.get("/landing.js", (_req, res) => {
     res.type("application/javascript").setHeader("Cache-Control", "public, max-age=3600");

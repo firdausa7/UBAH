@@ -19,7 +19,7 @@ describe("public landing page", () => {
   it("tells the Ubah story, the closed loop and the privacy promise, with Quick exit and no inline script", async () => {
     const res = await request(app).get("/");
     expect(res.status).toBe(200);
-    expect(res.text).toContain("means <strong>flower</strong> in Somali");
+    expect(res.text).toContain("means flower in Somali");
     expect(res.text).toContain("Why</em> a flower?");
     expect(res.text).toContain("We check back");
     expect(res.text).toContain("Your</em> privacy comes first");
@@ -28,6 +28,18 @@ describe("public landing page", () => {
     expect(res.text).toContain("data-quick-exit");
     expect(res.text).not.toMatch(/<script>(?!<\/script>)/);
     expect((await request(app).get("/landing.js")).text).toContain("location.replace");
+  });
+
+  it("is translatable: published translations show, untranslated sentences stay in English", async () => {
+    await db.query(`INSERT INTO string_versions (key, language, version, text, status) VALUES ('land_h1_rest','so',1,'[DRAFT so headline]','published')`);
+    const { refreshCaches } = await import("../src/caches.js");
+    await refreshCaches(db, { force: true });
+    const so = (await request(app).get("/?lang=so")).text;
+    expect(so).toContain('<html lang="so">');
+    expect(so).toContain("[DRAFT so headline]");
+    expect(so).toContain("Why</em> a flower?"); // not translated yet
+    expect(so).toContain('aria-current="true">Soomaali');
+    expect((await request(app).get("/?lang=xx")).text).toContain('<html lang="en">');
   });
 
   it("never shows a made-up contact: channels without settings say coming soon", async () => {

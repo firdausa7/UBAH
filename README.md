@@ -46,7 +46,7 @@ npm run train      # trains the starter models from data/seed
 npm run dev        # http://localhost:3000
 ```
 
-- **Public landing page** (the Ubah story, how it works, how to reach Ubah): http://localhost:3000/ — set `PUBLIC_SMS_NUMBER`, `PUBLIC_WHATSAPP_NUMBER`, `PUBLIC_USSD_CODE` once they are live; until then it says "coming soon"
+- **Public landing page** (the Ubah story, how it works, how to reach Ubah; every sentence translatable as `land_…` strings, `?lang=so|sw|om|en`): http://localhost:3000/ — set `PUBLIC_SMS_NUMBER`, `PUBLIC_WHATSAPP_NUMBER`, `PUBLIC_USSD_CODE` once they are live; until then it says "coming soon"
 - **The girls' app**: http://localhost:3000/app/ (on a phone: open it in Chrome and choose "Add to Home screen")
 - **Simulator** (chat as a girl): http://localhost:3000/simulator
 - **Staff login**: http://localhost:3000/staff/login — logins `admin`, `nurse`, `dada`, `clinic-a`, `partner`, `reviewer` (health-partner reviewer), `editor` (content editor / translator); password `change-me-now` (set `DEMO_STAFF_PASSWORD` to change it)
