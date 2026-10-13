@@ -40,7 +40,6 @@ beforeAll(async () => {
 
 describe("the installable app", () => {
   it("serves the shell, manifest, service worker and icons", async () => {
-    expect((await request(app).get("/")).headers.location).toBe("/app/");
     expect((await request(app).get("/app")).headers.location).toBe("/app/");
     const shell = await request(app).get("/app/");
     expect(shell.text).toContain('rel="manifest"');

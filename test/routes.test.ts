@@ -16,6 +16,7 @@ import { dashboardRouter } from "../src/web/dashboard.js";
 import { paymentsRouter } from "../src/web/payments.js";
 import { modelsRouter } from "../src/web/models.js";
 import { appApiRouter } from "../src/web/appApi.js";
+import { landingRouter } from "../src/web/landing.js";
 import { trainAll } from "../src/ml/train.js";
 import { reloadModels } from "../src/ml/models.js";
 import type { Db } from "../src/db.js";
@@ -59,6 +60,7 @@ describe("route inventory", () => {
       ...routesOf((app as any).router.stack),
       ...routesOf((simulatorRouter(db) as any).stack, "/simulator"),
       ...routesOf((appApiRouter(db) as any).stack, "/app/api"),
+      ...routesOf((landingRouter() as any).stack, ""),
       ...[
         loginRouter(db, { loginLimiter: limiter }),
         adminRouter(db, { tokenLimiter: limiter }),
@@ -168,7 +170,7 @@ describe("route inventory", () => {
     expect((await (await as("partner")).get("/staff/")).headers.location).toBe("/staff/dashboard");
     expect((await (await as("editor")).get("/staff/")).headers.location).toBe("/staff/content");
     expect((await (await as("reviewer")).get("/staff/")).headers.location).toBe("/staff/content");
-    expect((await request(app).get("/")).headers.location).toBe("/app/"); // girls land on their app
+    expect((await request(app).get("/")).text).toContain("means <strong>flower</strong>"); // the public landing page
     expect((await request(app).get("/staff/cases/abc").set("Cookie", "")).status).toBe(302);
   });
 

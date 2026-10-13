@@ -19,6 +19,7 @@ import { dashboardRouter } from "./web/dashboard.js";
 import { paymentsRouter } from "./web/payments.js";
 import { modelsRouter } from "./web/models.js";
 import { appApiRouter } from "./web/appApi.js";
+import { landingRouter } from "./web/landing.js";
 import { icon } from "./pwa/icons.js";
 import { dirname, join } from "node:path";
 import { bootstrapModels } from "./ml/registry.js";
@@ -137,7 +138,7 @@ export function createApp(db: Db, opts: AppOptions = {}) {
     if (req.query.format === "prometheus") return res.type("text/plain; version=0.0.4").send(opsPrometheus(s));
     res.status(s.ok ? 200 : 503).json(s);
   });
-  app.get("/", (_req, res) => res.redirect("/app/"));
+  app.use(landingRouter());
 
   // ---- Webhooks ----
   const webhookLimiter = rateLimit({ name: "webhooks", windowMs: 60_000, max: opts.webhookPerMin ?? config.security.rateLimitWebhookPerMin });

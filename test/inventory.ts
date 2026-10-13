@@ -1,6 +1,7 @@
 // Every route in the app. Adding a route without adding it here (and testing it) fails this suite.
 export const INVENTORY = [
   "GET /",
+  "GET /landing.js",
   "GET /health",
   "GET /app",
   "GET /app/icon-:size.png",

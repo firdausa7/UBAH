@@ -92,6 +92,11 @@ const EnvSchema = z.object({
   RATE_LIMIT_LOGIN_PER_MIN: num(10, 1),
 
   // Background jobs.
+  // Shown on the public landing page. Empty = "coming soon" (never a made-up number).
+  PUBLIC_SMS_NUMBER: z.string().default(""),
+  PUBLIC_WHATSAPP_NUMBER: z.string().default(""),
+  PUBLIC_USSD_CODE: z.string().default(""),
+  PUBLIC_CONTACT_EMAIL: z.string().default(""),
   // Key for /health/ops (monitoring). Empty: the endpoint is off.
   OPS_KEY: z.string().default(""),
   // Demo mode labels every staff page as DEMO DATA. Never allowed in production.
@@ -208,6 +213,7 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     },
 
     opsKey: e.OPS_KEY,
+    public: { smsNumber: e.PUBLIC_SMS_NUMBER, whatsappNumber: e.PUBLIC_WHATSAPP_NUMBER, ussdCode: e.PUBLIC_USSD_CODE, contactEmail: e.PUBLIC_CONTACT_EMAIL },
     demoMode: e.DEMO_MODE,
     jobs: { enabled: e.JOBS_ENABLED, pollMs: e.JOB_POLL_MS, checkinSweepMinutes: e.CHECKIN_SWEEP_MINUTES },
   };
