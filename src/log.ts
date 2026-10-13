@@ -13,5 +13,10 @@ export const log = pino({
   timestamp: pino.stdTimeFunctions.isoTime,
 });
 
-// Strip query strings (webhook keys, tokens) before a URL is logged.
-export const safePath = (url: string) => url.split("?")[0];
+// Strip query strings (webhook keys, tokens) and secrets inside paths before a URL is logged:
+// one-time set-password links and the M-Pesa callback token.
+export const safePath = (url: string) =>
+  url
+    .split("?")[0]
+    .replace(/^(\/staff\/invite\/)[^/]+/, "$1[redacted]")
+    .replace(/^(\/webhooks\/mpesa\/)[^/]+/, "$1[redacted]");

@@ -87,7 +87,8 @@ const EnvSchema = z.object({
   SESSION_IDLE_MINUTES: num(120, 5),
   LOGIN_MAX_FAILURES: num(5, 1),
   LOGIN_LOCK_MINUTES: num(15, 1),
-  RATE_LIMIT_WEBHOOK_PER_MIN: num(600, 1),
+  // Webhooks come from a few Meta / Africa's Talking servers: keep this high so a girl's message is never throttled.
+  RATE_LIMIT_WEBHOOK_PER_MIN: num(6000, 1),
   RATE_LIMIT_LOGIN_PER_MIN: num(10, 1),
 
   // Background jobs.

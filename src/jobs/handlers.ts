@@ -39,6 +39,7 @@ export function registerAllJobs() {
     try {
       const n = await sendDueCheckins(db);
       if (n) log.info({ sent: n }, "check-in sweep sent missed check-ins");
+      await housekeeping(db);
     } finally {
       await scheduleNextSweep(db);
     }
@@ -80,4 +81,13 @@ export function registerAllJobs() {
       Result: { ResultType: 0, ResultCode: 0, ResultDesc: "Mock: the service request is processed successfully.", OriginatorConversationID: job.payload.requestId, ConversationID: `MOCK`, TransactionID: `MOCK${Date.now().toString(36).toUpperCase()}` },
     });
   });
+}
+
+// Removes what is no longer needed: ended staff sessions, used or expired one-time links and login codes,
+// and finished jobs older than 30 days (their outcome is in the audit log and the records they changed).
+export async function housekeeping(db: Db): Promise<void> {
+  await db.query(`DELETE FROM staff_sessions WHERE (revoked_at IS NOT NULL OR expires_at < now()) AND created_at < now() - interval '30 days'`);
+  await db.query(`DELETE FROM staff_tokens WHERE (used_at IS NOT NULL OR expires_at < now()) AND created_at < now() - interval '30 days'`);
+  await db.query(`DELETE FROM staff_otp WHERE created_at < now() - interval '1 day'`);
+  await db.query(`DELETE FROM jobs WHERE status = 'done' AND finished_at < now() - interval '30 days'`);
 }

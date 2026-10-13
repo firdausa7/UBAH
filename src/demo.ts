@@ -20,22 +20,24 @@ function rng(seed: number) {
   };
 }
 
-// Example questions (made up, in English) covering every topic and danger class.
-const QUESTIONS: Array<[string, number]> = [
-  ["my period is two weeks late, what should i do", 9],
-  ["i get very bad cramps every month", 8],
-  ["how do i use a pad", 5],
-  ["how can i prevent pregnancy", 8],
-  ["the condom broke last night", 4],
-  ["i have itching and a smell down there", 5],
-  ["where can i get an hiv test", 4],
-  ["am i pregnant if i feel sick every morning", 6],
-  ["i feel sad and alone all the time", 4],
-  ["is white discharge normal", 4],
-  ["my uncle beats me when he is angry", 2],
-  ["i am pregnant and bleeding a lot", 2],
-  ["i don't want to live anymore", 1],
-  ["what is the capital of france", 1],
+// Example questions (made up, in English) covering every topic and danger class, with the danger
+// label a nurse would give each one. The demo uses these labels (not the live model) so the case load
+// it shows is realistic; how often the model flags ordinary questions is measured on real labels.
+const QUESTIONS: Array<[[string, string], number]> = [
+  [["my period is two weeks late, what should i do", "none"], 9],
+  [["i get very bad cramps every month", "none"], 8],
+  [["how do i use a pad", "none"], 6],
+  [["how can i prevent pregnancy", "none"], 8],
+  [["the condom broke last night", "none"], 4],
+  [["i have itching and a smell down there", "none"], 5],
+  [["where can i get an hiv test", "none"], 4],
+  [["am i pregnant if i feel sick every morning", "none"], 6],
+  [["i feel sad and alone all the time", "none"], 4],
+  [["is white discharge normal", "none"], 5],
+  [["my uncle beats me when he is angry", "safety"], 1],
+  [["i am pregnant and bleeding a lot", "medical"], 1],
+  [["i don't want to live anymore", "selfharm"], 0.5],
+  [["what is the capital of france", "none"], 1],
 ];
 
 const LANGS: Array<[string, number]> = [
@@ -138,8 +140,8 @@ export async function loadDemo(db: Db, opts: { girls?: number; weeks?: number; s
     );
     const questions = 1 + Math.floor(r() * 3);
     for (let q = 0; q < questions; q++) {
-      const text = pick(r, QUESTIONS);
-      const a = analyse(text, "en");
+      const [text, danger] = pick(r, QUESTIONS);
+      const a = { ...analyse(text, "en"), danger: danger as "none" | "medical" | "safety" | "selfharm" };
       const when = startAgo - q * 3600e3;
       const voice = channel === "whatsapp" && r() < 0.3;
       await db.query(`INSERT INTO messages (user_id, direction, channel, kind, body, topic, danger, coded_terms, created_at) VALUES ($1,'in',$2,$3,$4,$5,$6,$7,$8)`, [
@@ -166,7 +168,7 @@ export async function loadDemo(db: Db, opts: { girls?: number; weeks?: number; s
         await db.query(`INSERT INTO case_events (case_id, kind, at) VALUES ($1,'opened',$2)`, [c.id, at(when)]);
         caseCount++;
         if (level === "dada") handledByDada.push({ caseId: c.id, dada: handler, at: at(when) });
-      } else if (r() < 0.12) {
+      } else if (r() < 0.04) {
         const [c] = await db.query<{ id: number }>(
           `INSERT INTO cases (user_id, reason, urgent, summary, level, status, assigned_to, created_at, first_reply_at, handled_at) VALUES ($1,'asked_for_person',FALSE,$2,'dada',$3,$4,$5,$6,$7) RETURNING id`,
           [u.id, `[DEMO] ${text}`, r() < 0.85 ? "handled" : "open", dadas[Math.floor(r() * 2)], at(when), at(when - 20 * 60e3), at(when - 60 * 60e3)],

@@ -31,7 +31,10 @@ export function appApiRouter(db: Db, opts: { sessionsPerHour?: number; requestsP
     res.setHeader("Cache-Control", "no-store");
     next();
   });
-  r.use(rateLimit({ name: "app-api", windowMs: 60_000, max: opts.requestsPerMin ?? 120, key: (req) => String(req.headers.authorization ?? req.ip).slice(-24) }));
+  // Many girls in a camp can share one public IP (carrier NAT), so each device has its own limit, and
+  // the per-IP limit is only a high ceiling against abuse.
+  r.use(rateLimit({ name: "app-api-ip", windowMs: 60_000, max: (opts.requestsPerMin ?? 120) * 25, key: (req) => req.ip ?? "unknown" }));
+  r.use(rateLimit({ name: "app-api", windowMs: 60_000, max: opts.requestsPerMin ?? 120, key: (req) => `${req.ip}|${String(req.headers.authorization ?? "").slice(-24)}` }));
 
   const auth = async (req: AppReq, res: Response, next: NextFunction) => {
     const token = String(req.headers.authorization ?? "").replace(/^Bearer\s+/i, "");
@@ -44,7 +47,7 @@ export function appApiRouter(db: Db, opts: { sessionsPerHour?: number; requestsP
   };
 
   // A new anonymous device session.
-  r.post("/session", rateLimit({ name: "app-session", windowMs: 3600_000, max: opts.sessionsPerHour ?? 30 }), async (_req, res) => {
+  r.post("/session", rateLimit({ name: "app-session", windowMs: 3600_000, max: opts.sessionsPerHour ?? 300 }), async (_req, res) => {
     const token = randomToken(32);
     await getOrCreateUser(db, { channel: "app", from: appId(token) });
     res.status(201).json({ token });
