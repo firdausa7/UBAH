@@ -1,11 +1,15 @@
 # Render Blueprint: Ubah + Postgres in one step (Render dashboard → New → Blueprint → this repository).
 # This deploys the online TEST version (DEPLOY_STAGE=staging): secure, but for staff and test phones
 # only, never real girls. See README → "Put Ubah online (test version)".
+# Plans: FREE for now (no card needed). Free web services sleep after ~15 minutes without visitors
+# (background jobs such as nurse reminders and check-ins pause while asleep) and free databases are
+# deleted by Render after about 30 days. Change both "plan" lines to paid plans for real testing.
 # Region: Frankfurt is the closest Render region to Kenya; data is stored in the EU (fine for testing;
 # the real pilot's hosting needs your legal adviser's approval, see docs/deployment.md).
 
 databases:
   - name: ubah-db
+    plan: free
     databaseName: ubah
     user: ubah
     region: frankfurt
@@ -16,6 +20,7 @@ services:
   - type: web
     name: ubah
     runtime: docker
+    plan: free
     dockerfilePath: ./Dockerfile
     region: frankfurt
     healthCheckPath: /health
