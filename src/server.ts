@@ -18,6 +18,9 @@ import { clinicRouter } from "./web/clinic.js";
 import { dashboardRouter } from "./web/dashboard.js";
 import { paymentsRouter } from "./web/payments.js";
 import { modelsRouter } from "./web/models.js";
+import { appApiRouter } from "./web/appApi.js";
+import { icon } from "./pwa/icons.js";
+import { dirname, join } from "node:path";
 import { bootstrapModels } from "./ml/registry.js";
 import { handleDeskSms } from "./clinicDesk.js";
 import { handleUssd } from "./ussd.js";
@@ -39,7 +42,10 @@ export interface AppOptions {
   // Overrides for tests.
   loginPerMin?: number;
   webhookPerMin?: number;
+  appApi?: { sessionsPerHour?: number; requestsPerMin?: number };
 }
+
+const PWA_DIR = join(dirname(fileURLToPath(import.meta.url)), "pwa", "public");
 
 // Work that continues after a webhook has answered (Meta and Africa's Talking want a fast 200).
 // Tracked so a graceful shutdown waits for it instead of dropping a girl's message.
@@ -84,7 +90,10 @@ export function createApp(db: Db, opts: AppOptions = {}) {
           styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
           fontSrc: ["'self'", "https://fonts.gstatic.com"],
           imgSrc: ["'self'", "data:"],
+          mediaSrc: ["'self'", "blob:"],
           connectSrc: ["'self'"],
+          workerSrc: ["'self'"],
+          manifestSrc: ["'self'"],
           formAction: ["'self'"],
           frameAncestors: ["'none'"],
           baseUri: ["'none'"],
@@ -119,7 +128,7 @@ export function createApp(db: Db, opts: AppOptions = {}) {
       res.status(503).json({ ok: false, db: "down" });
     }
   });
-  app.get("/", (_req, res) => res.redirect("/staff/login"));
+  app.get("/", (_req, res) => res.redirect("/app/"));
 
   // ---- Webhooks ----
   const webhookLimiter = rateLimit({ name: "webhooks", windowMs: 60_000, max: opts.webhookPerMin ?? config.security.rateLimitWebhookPerMin });
@@ -219,6 +228,29 @@ export function createApp(db: Db, opts: AppOptions = {}) {
   });
 
   if (config.simulator) app.use("/simulator", simulatorRouter(db));
+
+  // ---- The girls' app (installable, works offline) ----
+  app.use("/app/api", appApiRouter(db, opts.appApi));
+  app.get("/app/icon-:size.png", (req, res, next) => {
+    const size = Number(req.params.size);
+    if (size !== 192 && size !== 512) return next();
+    res.type("image/png").setHeader("Cache-Control", "public, max-age=604800");
+    res.send(icon(size));
+  });
+  // Express treats /app and /app/ alike: redirect only the bare form.
+  app.get("/app", (req, res, next) => (req.originalUrl === "/app" ? res.redirect(301, "/app/") : next()));
+  app.use(
+    "/app",
+    express.static(PWA_DIR, {
+      index: "index.html",
+      setHeaders(res, path) {
+        // The shell is re-checked on every visit (the service worker keeps it for offline use).
+        res.setHeader("Cache-Control", "no-cache");
+        if (path.endsWith("sw.js")) res.setHeader("Service-Worker-Allowed", "/app/");
+        if (path.endsWith(".webmanifest")) res.setHeader("Content-Type", "application/manifest+json");
+      },
+    }),
+  );
 
   // ---- Staff ----
   // Staff pages hold sensitive data, often on shared phones: never cache them.

@@ -12,8 +12,11 @@ export function normalizePhone(raw: string): string {
   return p;
 }
 
+// App users have no phone number: their "number" is "app:<random device secret>", hashed the same way.
+export const isAppId = (raw: string) => raw.startsWith("app:");
+
 export function hashPhone(raw: string): string {
-  return createHmac("sha256", config.hashSecret).update(normalizePhone(raw)).digest("hex");
+  return createHmac("sha256", config.hashSecret).update(isAppId(raw) ? raw : normalizePhone(raw)).digest("hex");
 }
 
 function key(): Buffer {
@@ -38,7 +41,8 @@ export function decryptSecret(blob: string): string {
   return Buffer.concat([decipher.update(enc), decipher.final()]).toString("utf8");
 }
 
-export const encryptPhone = (raw: string) => encryptSecret(normalizePhone(raw));
+// App users: nothing to send to, so only a placeholder is stored (never the device secret).
+export const encryptPhone = (raw: string) => encryptSecret(isAppId(raw) ? "app" : normalizePhone(raw));
 export const decryptPhone = decryptSecret;
 
 // Session tokens, login codes and recovery codes are stored only as SHA-256 hashes.

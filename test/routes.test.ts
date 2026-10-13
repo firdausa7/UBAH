@@ -15,6 +15,7 @@ import { clinicRouter } from "../src/web/clinic.js";
 import { dashboardRouter } from "../src/web/dashboard.js";
 import { paymentsRouter } from "../src/web/payments.js";
 import { modelsRouter } from "../src/web/models.js";
+import { appApiRouter } from "../src/web/appApi.js";
 import { trainAll } from "../src/ml/train.js";
 import { reloadModels } from "../src/ml/models.js";
 import type { Db } from "../src/db.js";
@@ -23,6 +24,21 @@ import type { Db } from "../src/db.js";
 const INVENTORY = [
   "GET /",
   "GET /health",
+  "GET /app",
+  "GET /app/icon-:size.png",
+  "POST /app/api/session",
+  "GET /app/api/strings",
+  "GET /app/api/me",
+  "PATCH /app/api/me",
+  "DELETE /app/api/me",
+  "GET /app/api/messages",
+  "POST /app/api/messages",
+  "POST /app/api/voice",
+  "GET /app/api/clinics",
+  "POST /app/api/passes",
+  "GET /app/api/passes",
+  "GET /app/api/learn",
+  "GET /app/api/audio/:id",
   "GET /health/live",
   "GET /simulator/",
   "GET /simulator/app.js",
@@ -180,6 +196,7 @@ describe("route inventory", () => {
     const registered = [
       ...routesOf((app as any).router.stack),
       ...routesOf((simulatorRouter(db) as any).stack, "/simulator"),
+      ...routesOf((appApiRouter(db) as any).stack, "/app/api"),
       ...[
         loginRouter(db, { loginLimiter: limiter }),
         adminRouter(db, { tokenLimiter: limiter }),
@@ -289,7 +306,7 @@ describe("route inventory", () => {
     expect((await (await as("partner")).get("/staff/")).headers.location).toBe("/staff/dashboard");
     expect((await (await as("editor")).get("/staff/")).headers.location).toBe("/staff/content");
     expect((await (await as("reviewer")).get("/staff/")).headers.location).toBe("/staff/content");
-    expect((await request(app).get("/")).headers.location).toBe("/staff/login");
+    expect((await request(app).get("/")).headers.location).toBe("/app/"); // girls land on their app
     expect((await request(app).get("/staff/cases/abc").set("Cookie", "")).status).toBe(302);
   });
 

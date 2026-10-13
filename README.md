@@ -33,6 +33,8 @@ This repository started as the **functional prototype** for the UNICEF Femtech V
 | USSD menus for feature phones, including "Urgent help now" that reaches a human | `src/ussd.ts` |
 | Nearest partner clinic from a shared location or a typed landmark (coordinates never stored) | `src/location.ts` |
 | Model registry: new models are candidates; a danger-sign model can't go live if recall drops for any danger class | `src/ml/registry.ts`, `/staff/models` |
+| The girls' app: installable, works offline, PIN lock, quick exit, wipe history, same engine as WhatsApp | `/app`, `src/pwa/`, `src/web/appApi.ts` |
+| Clinic ratings for girls ("X of Y girls were treated with respect"), shown only from 5 ratings | `src/ratings.ts` |
 
 ## Run it locally (no accounts needed)
 
@@ -44,6 +46,7 @@ npm run train      # trains the starter models from data/seed
 npm run dev        # http://localhost:3000
 ```
 
+- **The girls' app**: http://localhost:3000/app/ (on a phone: open it in Chrome and choose "Add to Home screen")
 - **Simulator** (chat as a girl): http://localhost:3000/simulator
 - **Staff login**: http://localhost:3000/staff/login — logins `admin`, `nurse`, `dada`, `clinic-a`, `partner`, `reviewer` (health-partner reviewer), `editor` (content editor / translator); password `change-me-now` (set `DEMO_STAFF_PASSWORD` to change it)
 
@@ -129,6 +132,18 @@ Every page is server-rendered, works on a cheap Android phone on 3G, and shows e
 - **Clinic desk**: the web page, or from the clinic's registered phone with a desk PIN: SMS `CHECK UB-7K42 1234` / `SEEN UB-7K42 1234`, or the USSD menu. Wrong PINs lock the desk like wrong passwords.
 - **Dashboard** (`/staff/dashboard`): date range or presets, site/clinic/language filters, weekly trend charts with a table view, clinic dignity scores, **Download CSV**, **Monthly PDF report**. Counts from 1 to 4 are shown as "<5" everywhere, including exports.
 
+## The girls' app
+
+`/app` is a small installable web app (plain JavaScript, no framework, system fonts; about 25 KB of code) for girls with smartphones. It uses the same engine as WhatsApp and SMS, so the answers, danger handoffs, passes and check-ins are identical.
+
+- **Screens:** Home, Ask Ubah (type, tap the answer buttons, or record a voice note), Find care (choose services, see partner clinics with their ratings, get a pass), My passes, Learn (published lessons, with the recorded audio when there is one), Account (language, PIN, wipe history). **Quick exit** on every screen leaves at once and replaces the page in the browser history.
+- **No account, no phone number:** the app creates a random device secret; the server stores only a keyed hash of it. The conversation is kept on the server (as for WhatsApp), never stored on the phone.
+- **PIN lock:** with a PIN set, the device secret is encrypted with a key derived from the PIN (PBKDF2 + AES-GCM in the browser), so someone holding her phone can't open Ubah.
+- **Offline:** a service worker keeps the app, its text and the lessons (text and audio) for offline use. Messages, passes and account data are never cached. A question typed offline is sent when she is back online.
+- **Every word is translatable:** the app's text is part of the Translation studio (`app_…`, `svc_…`, `cat_…` keys); untranslated text shows in English.
+- **Ratings:** "X of Y girls who went there said they were treated with respect", from the day-3 check-ins of the last 12 months, shown only once a clinic has at least 5 answers — in the app and with the pass on every channel.
+- **Not yet:** push notifications. Check-ins and Dada replies appear when she opens the app (Ask refreshes every 10 seconds). Web Push needs a push-service setup and a decision on what a notification may show on a shared phone.
+
 ## Channels
 
 **WhatsApp.** Menus are written once as numbered lines in the (translated) message text; WhatsApp shows them as reply buttons (up to 3) or a list (up to 10), and a tap sends back the number, so SMS and WhatsApp share one flow and one set of translations. WhatsApp only allows free-form messages within 24 hours of the girl's last message:
@@ -211,7 +226,7 @@ npm test           # tests on embedded Postgres (PGlite)
 TEST_DATABASE_URL=postgres://user@localhost:5432/ubah_test npm test   # the same tests on a real Postgres server
 ```
 
-129 tests cover the full loop (question → answer → pass → check-in → dignity score), danger handoffs, coded words, voice notes, STOP/DELETE, the webhooks and their authentication, two-step login, lockout, CSRF, sessions, the audit log, migrations, config validation, the job queue and retries, health checks and graceful shutdown, and every Phase 2 page and action: staff invites and resets, clinics, sites and the protection pathway, the content/translation/glossary review workflow (including "only published content reaches girls"), voice uploads, the inbox (visibility, claim, assign, escalate, notes, live updates), SMS and USSD pass checks, dashboard filters, CSV and PDF, M-Pesa payments (mock, real API shape, callbacks, reconciliation), and the channels work: danger signs on every step (including a girl's first message), WhatsApp buttons, de-duplication, delivery statuses, the 24-hour window with templates, SMS fallback and held messages, voice answers, SMS splitting, delivery reports and opt-outs, inbound recovery, girls' USSD menus including urgent help, nearest clinic, citations, Somali search, the model registry's safety gate and the STT evaluation. A route inventory test fails if any of the 120 routes is added without being listed, if a page breaks for a role that should see it or opens for one that shouldn't, or if any form lacks a CSRF token.
+140 tests cover the full loop (question → answer → pass → check-in → dignity score), danger handoffs, coded words, voice notes, STOP/DELETE, the webhooks and their authentication, two-step login, lockout, CSRF, sessions, the audit log, migrations, config validation, the job queue and retries, health checks and graceful shutdown, and every Phase 2 page and action: staff invites and resets, clinics, sites and the protection pathway, the content/translation/glossary review workflow (including "only published content reaches girls"), voice uploads, the inbox (visibility, claim, assign, escalate, notes, live updates), SMS and USSD pass checks, dashboard filters, CSV and PDF, M-Pesa payments (mock, real API shape, callbacks, reconciliation), and the channels work: danger signs on every step (including a girl's first message), WhatsApp buttons, de-duplication, delivery statuses, the 24-hour window with templates, SMS fallback and held messages, voice answers, SMS splitting, delivery reports and opt-outs, inbound recovery, girls' USSD menus including urgent help, nearest clinic, citations, Somali search, the model registry's safety gate and the STT evaluation. the girls' app (shell, icons, anonymous sessions storing only a hash, translated text, the danger handoff from a first message, chat with tap-able options, voice, care and passes, ratings hidden below 5, lessons and audio, wipe, no caching of personal data). A route inventory test fails if any of the 137 routes is added without being listed, if a page breaks for a role that should see it or opens for one that shouldn't, or if any form lacks a CSRF token.
 
 CI (`.github/workflows/ci.yml`) runs lint, typecheck and tests on both PGlite and Postgres 16, and builds the Docker image.
 
@@ -234,7 +249,7 @@ CI (`.github/workflows/ci.yml`) runs lint, typecheck and tests on both PGlite an
 - [x] **Phase 1 — Production foundations**: migrations, validated config, CSRF, rate limits, lockout, security headers, two-step login (TOTP and SMS), audit log, structured logs, health checks, graceful shutdown, Postgres job queue, Docker and CI.
 - [x] **Phase 2 — Staff platform**: admin (staff, clinics, sites), content, translation and glossary studios with review workflow, full inbox, protection pathway, clinic desk by SMS/USSD, dashboard filters, trends, CSV and PDF, Dada payments through M-Pesa.
 - [x] **Phase 3 — Channels, AI and machine learning**: WhatsApp buttons, templates and the 24-hour window, delivery reports, durable inbound, USSD for girls, voice answers and STT evaluation, multilingual search with citations, nearest clinic, model registry with a danger-recall gate.
-- [ ] **Phase 4 — Girl-facing app**: offline-capable PWA.
+- [x] **Phase 4 — Girl-facing app**: installable offline app with PIN lock, quick exit, wipe history, voice notes, Learn with audio, and clinic ratings shown from 5 answers.
 - [ ] **Phase 5 — Pilot readiness**: end-to-end and load tests, deployment guide, DPIA, privacy notice and safeguarding drafts, demo mode.
 
 ## Licences

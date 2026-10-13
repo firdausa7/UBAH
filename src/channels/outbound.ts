@@ -133,7 +133,8 @@ async function deliverToUser(db: Db, user: UserRow, body: string, opts: SendOpti
     return { status: "held", providerId: null, via: "pending", error: null, retry: false };
   }
   if (user.channel === "sms") return smsSend(db, phone, user.phone_hash, body);
-  return { status: "mock", providerId: null, via: "simulator", error: null, retry: false };
+  // The app and the simulator read their messages from the conversation; nothing is sent out.
+  return { status: "mock", providerId: null, via: user.channel === "app" ? "app" : "simulator", error: null, retry: false };
 }
 
 // Sends a message to a girl, records it in her conversation, and retries in the background if it fails.

@@ -12,12 +12,13 @@ import { sendToUser, alertStaff, flushPending, type UserRow } from "./channels/o
 import { log } from "./log.js";
 import { refreshCaches } from "./caches.js";
 import { caseBus, caseEvent, levelFor, type CaseSignal } from "./cases.js";
+import { clinicRatings } from "./ratings.js";
 
 // The conversation engine: one function that handles every incoming message,
 // from any channel (WhatsApp, SMS, simulator).
 
 export interface Incoming {
-  channel: "whatsapp" | "sms" | "simulator";
+  channel: "whatsapp" | "sms" | "simulator" | "app";
   from: string; // phone number (never stored in clear)
   text?: string;
   voice?: { audio: Buffer; mimeType: string; mockText?: string };
@@ -222,7 +223,7 @@ async function findCare(db: Db, user: UserRow, services: string[], _state: State
   return issueAndSend(db, user, services);
 }
 
-async function issueAndSend(db: Db, user: UserRow, services: string[]) {
+export async function issueAndSend(db: Db, user: UserRow, services: string[]) {
   const pass = await issuePass(db, user.id, services);
   await setState(db, user, { step: "free" });
   if (!pass) {
@@ -237,6 +238,8 @@ async function issueAndSend(db: Db, user: UserRow, services: string[]) {
     free: pass.clinic.free ? t(user.language, "pass_free") : "",
     days: config.passValidDays,
   });
+  const rating = (await clinicRatings(db)).get(pass.clinic.id);
+  if (rating) await say(db, user, "clinic_rating", { yes: rating.respectful, total: rating.total });
   await say(db, user, "checkin_scheduled");
   // Only offer "find a nearer clinic" when we know where clinics are.
   const [{ n }] = await db.query<{ n: number }>(`SELECT count(*)::int AS n FROM clinics WHERE active AND (lat IS NOT NULL OR cardinality(landmarks) > 0)`);
