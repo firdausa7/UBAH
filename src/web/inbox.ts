@@ -30,6 +30,7 @@ const EVENT_LABEL: Record<string, string> = {
   site: "Site set",
   step: "Protection step done",
   step_undone: "Protection step un-ticked",
+  reminder: "No reply yet: nurses reminded",
 };
 
 // The inbox page's live-update script (served as a file: the CSP forbids inline scripts).

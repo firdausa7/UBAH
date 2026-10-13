@@ -22,6 +22,7 @@ import { appApiRouter } from "./web/appApi.js";
 import { icon } from "./pwa/icons.js";
 import { dirname, join } from "node:path";
 import { bootstrapModels } from "./ml/registry.js";
+import { opsPrometheus, opsStatus, scheduleUrgentReminder } from "./ops.js";
 import { handleDeskSms } from "./clinicDesk.js";
 import { handleUssd } from "./ussd.js";
 import { alertStaff, applySmsDelivery, applyWhatsAppStatus } from "./channels/outbound.js";
@@ -127,6 +128,14 @@ export function createApp(db: Db, opts: AppOptions = {}) {
       log.error({ err: (err as Error).message }, "health check failed");
       res.status(503).json({ ok: false, db: "down" });
     }
+  });
+  // For monitoring and alerting: what needs a human's attention right now. Protected by OPS_KEY.
+  app.get("/health/ops", async (req, res) => {
+    const key = String(req.query.key ?? req.headers["x-ops-key"] ?? "");
+    if (!config.opsKey || !safeEqual(key, config.opsKey)) return res.sendStatus(404);
+    const s = await opsStatus(db);
+    if (req.query.format === "prometheus") return res.type("text/plain; version=0.0.4").send(opsPrometheus(s));
+    res.status(s.ok ? 200 : 503).json(s);
   });
   app.get("/", (_req, res) => res.redirect("/app/"));
 
@@ -311,6 +320,7 @@ export async function start(): Promise<Running> {
   if (config.jobs.enabled) {
     await scheduleNextSweep(db);
     await scheduleInboundRecovery(db);
+    await scheduleUrgentReminder(db);
     worker = startWorker(db);
     setWorker(worker);
   }

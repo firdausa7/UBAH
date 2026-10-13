@@ -226,23 +226,64 @@ npm test           # tests on embedded Postgres (PGlite)
 TEST_DATABASE_URL=postgres://user@localhost:5432/ubah_test npm test   # the same tests on a real Postgres server
 ```
 
-140 tests cover the full loop (question → answer → pass → check-in → dignity score), danger handoffs, coded words, voice notes, STOP/DELETE, the webhooks and their authentication, two-step login, lockout, CSRF, sessions, the audit log, migrations, config validation, the job queue and retries, health checks and graceful shutdown, and every Phase 2 page and action: staff invites and resets, clinics, sites and the protection pathway, the content/translation/glossary review workflow (including "only published content reaches girls"), voice uploads, the inbox (visibility, claim, assign, escalate, notes, live updates), SMS and USSD pass checks, dashboard filters, CSV and PDF, M-Pesa payments (mock, real API shape, callbacks, reconciliation), and the channels work: danger signs on every step (including a girl's first message), WhatsApp buttons, de-duplication, delivery statuses, the 24-hour window with templates, SMS fallback and held messages, voice answers, SMS splitting, delivery reports and opt-outs, inbound recovery, girls' USSD menus including urgent help, nearest clinic, citations, Somali search, the model registry's safety gate and the STT evaluation. the girls' app (shell, icons, anonymous sessions storing only a hash, translated text, the danger handoff from a first message, chat with tap-able options, voice, care and passes, ratings hidden below 5, lessons and audio, wipe, no caching of personal data). A route inventory test fails if any of the 136 routes is added without being listed, if a page breaks for a role that should see it or opens for one that shouldn't, or if any form lacks a CSRF token.
+149 tests cover the full loop (question → answer → pass → check-in → dignity score), danger handoffs, coded words, voice notes, STOP/DELETE, the webhooks and their authentication, two-step login, lockout, CSRF, sessions, the audit log, migrations, config validation, the job queue and retries, health checks and graceful shutdown, and every Phase 2 page and action: staff invites and resets, clinics, sites and the protection pathway, the content/translation/glossary review workflow (including "only published content reaches girls"), voice uploads, the inbox (visibility, claim, assign, escalate, notes, live updates), SMS and USSD pass checks, dashboard filters, CSV and PDF, M-Pesa payments (mock, real API shape, callbacks, reconciliation), and the channels work: danger signs on every step (including a girl's first message), WhatsApp buttons, de-duplication, delivery statuses, the 24-hour window with templates, SMS fallback and held messages, voice answers, SMS splitting, delivery reports and opt-outs, inbound recovery, girls' USSD menus including urgent help, nearest clinic, citations, Somali search, the model registry's safety gate and the STT evaluation. the girls' app (shell, icons, anonymous sessions storing only a hash, translated text, the danger handoff from a first message, chat with tap-able options, voice, care and passes, ratings hidden below 5, lessons and audio, wipe, no caching of personal data). An end-to-end crawler signs in as each of the seven roles, opens every page it can reach and checks that every link opens and every form posts to a real, CSRF-protected route; a "pilot day" test runs one journey across WhatsApp, SMS, USSD, the app, the inbox, the clinic desk and the dashboard; load tests send 300 WhatsApp and 100 SMS webhooks in a burst and check every girl is answered. A route inventory test fails if any of the 137 routes is added without being listed, if a page breaks for a role that should see it or opens for one that shouldn't, or if any form lacks a CSRF token.
 
 CI (`.github/workflows/ci.yml`) runs lint, typecheck and tests on both PGlite and Postgres 16, and builds the Docker image.
 
-## Before a pilot — must do
+## Pilot checklist
 
-- [ ] Import the starter content (`npm run import-content`); a health-partner reviewer reviews every topic in the Content studio and editors publish the approved ones; verify the hotline numbers in the text.
-- [ ] Native speakers translate every message in the Translation studio and the content into Somali, Kiswahili and Afaan Oromoo; reviewers who speak each language approve; test with girls.
-- [ ] Collect real coded words in community sessions and add them in the Glossary studio.
-- [ ] Add the verified partner clinics (with Kenya Master Facility List codes) and sites in Admin; agree each site's protection checklist and referral contacts with protection partners and mark contacts verified.
-- [ ] Register each clinic desk's phone and set desk PINs; set up M-Pesa (see [Dada payments](#dada-payments-m-pesa)).
-- [ ] Get the WhatsApp templates approved (see [Channels](#channels)), set up the USSD code and SMS callbacks, and add clinic coordinates and landmarks.
-- [ ] Measure speech-to-text on a consented test set before relying on voice notes (see [Voice](#voice)); native speakers review the DRAFT Somali word lists.
-- [ ] Ethics approval; testing starts with young women aged 18+.
-- [ ] Data protection impact assessment (Kenya Data Protection Act 2019).
-- [ ] Generate production secrets (`openssl rand -hex 32` for each), create the first admin with `npm run create-admin`, and give every staff member their own account.
-- [ ] Agree safeguarding and referral pathways with health and protection partners.
+Tick each item with a name and a date. Documents marked DRAFT are in `docs/`.
+
+**Legal, ethics and safeguarding**
+- [ ] Register HPI-SOLUTIONS KE LIMITED with the Office of the Data Protection Commissioner (ODPC) as a data controller.
+- [ ] Complete and sign the DPIA (`docs/dpia-template.md`) with the legal adviser and partners; decide where the data is hosted.
+- [ ] Ethics approval for the pilot; testing starts with young women aged 18+.
+- [ ] Finish the safeguarding procedure (`docs/safeguarding-procedure.md`) with health and protection partners; agree each site's checklist and referral contacts, enter them in Admin → Sites and mark each contact Verified.
+- [ ] Finish the privacy notice for girls (`docs/privacy-notice-girls.md`): legal check, test with young women, translate and approve in all four languages.
+- [ ] Data-sharing agreements with partners (what aggregate reports they receive).
+
+**Content and languages**
+- [ ] Import the starter content (`npm run import-content`); a named health-partner reviewer reviews every topic; editors publish the approved ones; verify any hotline numbers in the text.
+- [ ] Native speakers translate every message (Translation studio, including the app's text) and the content into Somali, Kiswahili and Afaan Oromoo; reviewers who speak each language approve; test with girls.
+- [ ] Collect real coded words in community sessions and add them in the Glossary studio; native speakers review the DRAFT Somali word lists in `src/ml/text.ts`.
+- [ ] Record voice answers for the most-asked topics (native speakers), upload and approve them.
+
+**Clinics and people**
+- [ ] Add the verified partner clinics (with Kenya Master Facility List codes, coordinates and landmarks) and sites in Admin.
+- [ ] Create every staff account by invite (no shared logins); every admin, nurse, partner, reviewer and editor sets up two-step login; every Dada has her phone on file; clinic desks set a desk PIN.
+- [ ] Train Dadas, nurses and clinic desks (safeguarding, the inbox, escalation, the clinic desk by web/SMS/USSD).
+- [ ] Put at least two nurses' numbers in `NURSE_ALERT_NUMBERS` and agree an on-call rota.
+
+**Channels and accounts** (step-by-step in this README)
+- [ ] WhatsApp Business number, app secret, and the two approved templates ([Channels](#channels)).
+- [ ] Africa's Talking: live SMS sender ID or shortcode, callbacks for inbound, delivery reports and opt-outs; a USSD code ([USSD](#ussd)).
+- [ ] M-Pesa B2C via Daraja, tested in the sandbox ([Dada payments](#dada-payments-m-pesa)).
+- [ ] Choose the speech-to-text model after measuring it on a consented test set ([Voice](#voice)); include the provider in the DPIA.
+
+**Running it**
+- [ ] Deploy following `docs/deployment.md`; production refuses to start until every safety- and privacy-critical setting is in place.
+- [ ] Nightly encrypted backups running, and **one restore drill done** and recorded.
+- [ ] Monitoring on `/health`, `/health/ops` (urgent case unanswered, failing nurse alerts, stopped worker) and backups, alerting the on-call lead.
+- [ ] Load test the staging server (`npm run loadtest`) at several times the expected peak.
+- [ ] Run a full rehearsal with staff and test phones on every channel: a question, a danger sign at night, a pass at a clinic desk, a check-in, a Dada payment.
+- [ ] `npm run demo -- --wipe` if demo data was ever loaded on that database (staff pages show a DEMO DATA banner while any exists).
+
+## Demo mode (for presentations)
+
+```bash
+npm run demo            # 8 weeks of made-up activity: ~140 girls, cases, passes, check-ins, ratings, payouts
+npm run demo -- --wipe  # remove every demo record
+```
+
+Every demo record is marked and labelled `[DEMO]`, staff pages and the monthly PDF carry a **DEMO DATA** banner while any exists, demo girls can never be sent a message, demo staff can't log in, and production refuses to load it. Stop the app before running it against the embedded database (PGlite allows one process at a time).
+
+## Operations
+
+- `/health` — the app and its database (for the load balancer).
+- `/health/ops?key=<OPS_KEY>` — what needs a person: urgent cases unanswered for 15+ minutes, failing nurse alerts, failed messages, dead or overdue jobs, stuck inbound messages, unanswered M-Pesa payments. HTTP 503 when anything needs attention; `&format=prometheus` for Prometheus/Grafana.
+- **Urgent-case reminder:** an urgent case with no reply after 15 minutes re-alerts the nurses by SMS every 15 minutes until someone replies (shown in the case history).
+- `npm run loadtest -- --url <staging> --rate 50 --duration 60 --kind whatsapp|sms` — webhook load test with latency percentiles; fails above 1% errors or a p95 over one second.
+- Full deployment, backup, restore and monitoring guide: `docs/deployment.md`.
 
 ## Roadmap to a pilot
 
@@ -250,7 +291,7 @@ CI (`.github/workflows/ci.yml`) runs lint, typecheck and tests on both PGlite an
 - [x] **Phase 2 — Staff platform**: admin (staff, clinics, sites), content, translation and glossary studios with review workflow, full inbox, protection pathway, clinic desk by SMS/USSD, dashboard filters, trends, CSV and PDF, Dada payments through M-Pesa.
 - [x] **Phase 3 — Channels, AI and machine learning**: WhatsApp buttons, templates and the 24-hour window, delivery reports, durable inbound, USSD for girls, voice answers and STT evaluation, multilingual search with citations, nearest clinic, model registry with a danger-recall gate.
 - [x] **Phase 4 — Girl-facing app**: installable offline app with PIN lock, quick exit, wipe history, voice notes, Learn with audio, and clinic ratings shown from 5 answers.
-- [ ] **Phase 5 — Pilot readiness**: end-to-end and load tests, deployment guide, DPIA, privacy notice and safeguarding drafts, demo mode.
+- [x] **Phase 5 — Pilot readiness**: end-to-end crawl of every page, link and form for every role, a cross-channel pilot-day test, load testing, monitoring with an urgent-case reminder, deployment/backup/restore guide, DRAFT DPIA, privacy notice and safeguarding procedure, demo mode, pilot checklist.
 
 ## Licences
 

@@ -4,7 +4,9 @@ import { auditReq } from "../audit.js";
 import { LANGUAGES } from "../i18n.js";
 import { dashboardStats, MIN_RESPONSES, showCount, showPct, statsCsv, type Count, type Filters, type WeekRow } from "../stats.js";
 import { monthlyReportPdf } from "../reports/monthlyPdf.js";
+import { hasDemoData } from "../demo.js";
 import { csrfField } from "../security/csrf.js";
+import { refreshCaches } from "../caches.js";
 import { requireRole, staffOf } from "./auth.js";
 import { page, esc, h1, select } from "./html.js";
 import { nav } from "./nav.js";
@@ -108,6 +110,7 @@ export function dashboardRouter(db: Db): Router {
 
   r.get("/dashboard", viewers, async (req, res) => {
     const s = staffOf(req);
+    await refreshCaches(db); // keeps the DEMO DATA banner current
     const f = parseFilters(req.query);
     const [st, o] = await Promise.all([dashboardStats(db, f), options()]);
     const lastDay = ymd(new Date(f.to.getTime() - DAY));
@@ -192,7 +195,7 @@ ${s.role === "admin" ? `<div class="card noprint"><h2>Admin</h2><form method="po
     const labels = scopeLabels(f, o);
     const monthName = new Date(`${month}-01T00:00:00Z`).toLocaleString("en-GB", { month: "long", year: "numeric", timeZone: "UTC" });
     const pdf = await monthlyReportPdf(st, {
-      title: "Ubah monthly report",
+      title: (await hasDemoData(db)) ? "[DEMO DATA] Ubah monthly report" : "Ubah monthly report",
       period: monthName,
       scope: [labels.site, labels.clinic, labels.language].join(" · "),
       generatedBy: staffOf(req).name,

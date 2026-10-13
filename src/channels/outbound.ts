@@ -140,6 +140,11 @@ async function deliverToUser(db: Db, user: UserRow, body: string, opts: SendOpti
 // Sends a message to a girl, records it in her conversation, and retries in the background if it fails.
 // Returns the conversation message id, or null if nothing was sent (she said STOP).
 export async function sendToUser(db: Db, user: UserRow, body: string, contentId: string | null = null, sentByStaff: number | null = null, opts: SendOptions = {}): Promise<number | null> {
+  // Demo girls are made up: never send anything to anyone.
+  if ((user as { demo?: boolean }).demo) {
+    await db.query(`INSERT INTO messages (user_id, direction, channel, body, sent_by_staff) VALUES ($1,'out',$2,$3,$4)`, [user.id, user.channel, body, sentByStaff]);
+    return null;
+  }
   if (user.opted_out && !opts.allowOptedOut) {
     log.info({ userId: user.id }, "not sending: she opted out");
     return null;

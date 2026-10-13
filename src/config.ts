@@ -91,6 +91,10 @@ const EnvSchema = z.object({
   RATE_LIMIT_LOGIN_PER_MIN: num(10, 1),
 
   // Background jobs.
+  // Key for /health/ops (monitoring). Empty: the endpoint is off.
+  OPS_KEY: z.string().default(""),
+  // Demo mode labels every staff page as DEMO DATA. Never allowed in production.
+  DEMO_MODE: bool(false),
   JOBS_ENABLED: bool(true),
   JOB_POLL_MS: num(2000, 100),
   CHECKIN_SWEEP_MINUTES: num(15, 1),
@@ -202,6 +206,8 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
       rateLimitLoginPerMin: e.RATE_LIMIT_LOGIN_PER_MIN,
     },
 
+    opsKey: e.OPS_KEY,
+    demoMode: e.DEMO_MODE,
     jobs: { enabled: e.JOBS_ENABLED, pollMs: e.JOB_POLL_MS, checkinSweepMinutes: e.CHECKIN_SWEEP_MINUTES },
   };
 
@@ -213,6 +219,8 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     if (cfg.sessionSecret === DEV_SESSION || cfg.sessionSecret.length < 32) problems.push("SESSION_SECRET must be set to at least 32 random characters");
     if (cfg.allowDraftContent) problems.push("ALLOW_DRAFT_CONTENT must be false (only approved content in a pilot)");
     if (!cfg.security.mfaRequired) problems.push("MFA_REQUIRED cannot be false in production");
+    if (cfg.demoMode) problems.push("DEMO_MODE must be false in production (demo data is fake)");
+    if (cfg.opsKey && cfg.opsKey.length < 24) problems.push("OPS_KEY must be at least 24 random characters");
     if (cfg.seedDemo) problems.push("SEED_DEMO must be false in production (create the first admin with: npm run create-admin)");
     if (cfg.nurseAlertNumbers.length === 0) problems.push("NURSE_ALERT_NUMBERS must list at least one number: danger signs must always reach a human");
     if (!cfg.africasTalking.apiKey || cfg.africasTalking.sandbox) {

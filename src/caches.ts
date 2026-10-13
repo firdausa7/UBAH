@@ -5,6 +5,8 @@ import { setTranslations, TRANSLATION_LANGUAGES } from "./i18n.js";
 import { setGlossary, type GlossaryEntry } from "./ml/glossary.js";
 import { setActiveModels } from "./ml/models.js";
 import { loadActiveModels } from "./ml/registry.js";
+import { hasDemoData } from "./demo.js";
+import { setDemoBanner } from "./web/html.js";
 
 // Health content, translated strings and the glossary live in the database but are read on every
 // message, so each app instance keeps a copy and refreshes it every 30 seconds (or at once after
@@ -38,6 +40,7 @@ export async function refreshCaches(db: Db, opts: { force?: boolean } = {}): Pro
     const [content, library, strings, glossary, models] = await Promise.all([loadServingContent(db), loadServingContent(db, true), loadStrings(db), loadGlossary(db), loadActiveModels(db)]);
     setServingContent(content, library);
     setActiveModels(models);
+    setDemoBanner(config.demoMode || (await hasDemoData(db)));
     setTranslations(strings);
     setGlossary(glossary);
     loadedAt = Date.now();

@@ -66,13 +66,20 @@ svg.chart text{font:12px "DM Sans",system-ui,sans-serif;fill:var(--muted)}
 @media print{header.top,.noprint{display:none}main{padding:0}.card{break-inside:avoid}}
 `;
 
+// Set by the cache refresh: true while any demo data exists (or DEMO_MODE is on).
+let demoBanner = false;
+export const setDemoBanner = (on: boolean) => {
+  demoBanner = on;
+};
+const DEMO_BANNER = `<div role="status" style="background:#7A5200;color:#fff;text-align:center;padding:8px 16px;font-weight:700">DEMO DATA — every girl, case and number on these pages is made up, for presentations only.</div>`;
+
 export function page(title: string, body: string, nav = ""): string {
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>${esc(title)} · Ubah</title>
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,600&display=swap" rel="stylesheet">
 <style>${CSS}</style></head><body>
-<header class="top"><a class="brand" href="/staff">ubah</a><nav>${nav}</nav></header><main>${body}</main></body></html>`;
+${demoBanner ? DEMO_BANNER : ""}<header class="top"><a class="brand" href="/staff">ubah</a><nav>${nav}</nav></header><main>${body}</main></body></html>`;
 }
 
 // ---- Small form helpers (values are always escaped) ----

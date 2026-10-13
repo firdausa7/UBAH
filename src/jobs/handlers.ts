@@ -5,6 +5,7 @@ import { retryOutbox } from "../channels/outbound.js";
 import { applyMpesaResult, sendPayout } from "../payments/mpesa.js";
 import { recoverInbound, scheduleInboundRecovery } from "../channels/inbound.js";
 import { trainCandidate } from "../ml/registry.js";
+import { remindUnansweredUrgent, scheduleUrgentReminder } from "../ops.js";
 import { TASKS } from "../ml/train.js";
 import { enqueue, registerJob, RetryLater } from "./queue.js";
 import { log } from "../log.js";
@@ -13,6 +14,7 @@ import { log } from "../log.js";
 //   checkin.send    the day-3 check-in for one pass, scheduled when the pass is issued
 //   checkins.sweep  safety net: sends any due check-in that was missed, then schedules itself again
 //   outbox.retry    re-sends a failed message to a girl, or a failed urgent alert to a nurse
+//   cases.urgent_reminder  re-alerts nurses about urgent cases unanswered for 15+ minutes (every 5 minutes)
 //   inbound.recover handles inbound messages a stop or error left unhandled (every 2 minutes)
 //   ml.train        trains candidate models from labels (an admin promotes them)
 //   mpesa.pay       sends one approved Dada payout to M-Pesa (at most once)
@@ -44,6 +46,15 @@ export function registerAllJobs() {
 
   registerJob("outbox.retry", async (db, job) => {
     await retryOutbox(db, job.payload);
+  });
+
+  // SAFETY: re-alert nurses about urgent cases nobody has answered for 15 minutes.
+  registerJob("cases.urgent_reminder", async (db) => {
+    try {
+      await remindUnansweredUrgent(db);
+    } finally {
+      await scheduleUrgentReminder(db);
+    }
   });
 
   registerJob("inbound.recover", async (db) => {

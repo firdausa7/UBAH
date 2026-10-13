@@ -3,6 +3,7 @@ import { config } from "../config.js";
 import type { Db } from "../db.js";
 import { randomToken, sha256 } from "../privacy.js";
 import { readCookie } from "./cookies.js";
+import { refreshCaches } from "../caches.js";
 
 // Staff sessions live in the database (only a hash of the token is stored), so logout,
 // deactivation and password changes end a session at once. No girl ever logs in.
@@ -105,6 +106,7 @@ const loginRedirect = (req: Request, res: Response) => res.redirect(`/staff/logi
 // Pages for fully signed-in staff with one of the given roles.
 export function requireRole(db: Db, roles: Role[]) {
   return async (req: Request, res: Response, next: NextFunction) => {
+    await refreshCaches(db); // at most every 30 s: keeps published content and the DEMO DATA banner current
     const s = await readSession(db, req);
     if (!s) return loginRedirect(req, res);
     if (!s.session.mfa_passed) return res.redirect("/staff/2fa");

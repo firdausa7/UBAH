@@ -16,7 +16,9 @@
     "check": "npm run lint && npm run typecheck && npm test",
     "test:pg": "TEST_DATABASE_URL=${TEST_DATABASE_URL:-postgres://ubah@127.0.0.1:55432/ubah_test} vitest run",
     "import-content": "tsx src/importContent.ts",
-    "eval:stt": "tsx src/ai/sttEval.ts"
+    "eval:stt": "tsx src/ai/sttEval.ts",
+    "demo": "tsx src/demoCli.ts",
+    "loadtest": "tsx src/tools/loadtest.ts"
   },
   "keywords": [],
   "author": "",
