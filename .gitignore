@@ -4,3 +4,4 @@ node_modules/
 data/labeled/
 *.log
 data/stt-eval/
+.claude/
