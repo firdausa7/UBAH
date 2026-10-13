@@ -58,7 +58,7 @@ export function appApiRouter(db: Db, opts: { sessionsPerHour?: number; requestsP
     const lang = String(req.query.lang ?? "en") in LANGUAGES ? String(req.query.lang) : "en";
     const keys = Object.keys(en).filter((k) => /^(app_|svc_|cat_)/.test(k) || ["answer_source", "translation_pending"].includes(k));
     res.setHeader("Cache-Control", "no-cache");
-    res.json({ lang, languages: LANGUAGES, strings: Object.fromEntries(keys.map((k) => [k, rawString(lang, k)])) });
+    res.json({ lang, stage: config.stage, languages: LANGUAGES, strings: Object.fromEntries(keys.map((k) => [k, rawString(lang, k)])) });
   });
 
   r.get("/me", auth, (req: AppReq, res) => {

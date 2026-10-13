@@ -20,6 +20,15 @@ const list = z
 
 const EnvSchema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
+  // With NODE_ENV=production: "production" is the real service; "staging" is a secure online TEST version
+  // that may run before SMS/WhatsApp accounts exist (mock channels, draft content) and says so on every page.
+  DEPLOY_STAGE: z.enum(["production", "staging"]).default("production"),
+  // Render sets this to the service's public https address.
+  RENDER_EXTERNAL_URL: z.url().optional(),
+  // First admin on a fresh online database, without a terminal: created only if no admin exists,
+  // and must change this password (and set up two-step login) at first login.
+  BOOTSTRAP_ADMIN_LOGIN: z.string().regex(/^[a-z0-9][a-z0-9._-]{2,39}$/, { message: "lower-case letters, numbers, . _ - (3-40)" }).optional(),
+  BOOTSTRAP_ADMIN_PASSWORD: z.string().min(12, { message: "must be at least 12 characters" }).optional(),
   PORT: num(3000, 1),
   BASE_URL: z.url({ message: "must be a full URL, e.g. https://ubah.example.org" }).optional(),
   // Number of proxy hops in front of the app (load balancer = 1). Needed for correct client IPs.
@@ -30,9 +39,11 @@ const EnvSchema = z.object({
   PGLITE_DIR: z.string().default("./.data/pglite"),
 
   HASH_SECRET: z.string().default(DEV_HASH),
+  // 32 bytes as 64 hex characters (openssl rand -hex 32) or as base64 (what Render's "generate" produces).
   ENCRYPTION_KEY: z
     .string()
-    .regex(/^[0-9a-fA-F]{64}$/, { message: "must be 64 hex characters (generate with: openssl rand -hex 32)" })
+    .refine((v) => /^[0-9a-fA-F]{64}$/.test(v) || Buffer.from(v, "base64").length === 32, { message: "must be 32 bytes: 64 hex characters (openssl rand -hex 32) or base64" })
+    .transform((v) => (/^[0-9a-fA-F]{64}$/.test(v) ? v : Buffer.from(v, "base64").toString("hex")))
     .default(DEV_KEY),
   SESSION_SECRET: z.string().default(DEV_SESSION),
 
@@ -124,10 +135,15 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
   }
   const e = parsed.data;
   const production = e.NODE_ENV === "production";
-  const baseUrl = e.BASE_URL ?? `http://localhost:${e.PORT}`;
+  const staging = production && e.DEPLOY_STAGE === "staging";
+  const publicUrl = e.BASE_URL ?? e.RENDER_EXTERNAL_URL;
+  const baseUrl = publicUrl ?? `http://localhost:${e.PORT}`;
 
   const cfg = {
     env: e.NODE_ENV,
+    // "development" locally; online: "staging" (secure TEST version) or "production" (the real service).
+    stage: (production ? e.DEPLOY_STAGE : "development") as "development" | "staging" | "production",
+    bootstrapAdmin: e.BOOTSTRAP_ADMIN_LOGIN && e.BOOTSTRAP_ADMIN_PASSWORD ? { login: e.BOOTSTRAP_ADMIN_LOGIN, password: e.BOOTSTRAP_ADMIN_PASSWORD } : null,
     production,
     port: e.PORT,
     // Public base URL, used in links sent to staff.
@@ -190,7 +206,7 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     nurseAlertNumbers: e.NURSE_ALERT_NUMBERS,
 
     // The browser simulator (chat as a girl without a phone). Off in production unless enabled.
-    simulator: e.ENABLE_SIMULATOR ?? !production,
+    simulator: e.ENABLE_SIMULATOR ?? (!production || staging),
     seedDemo: e.SEED_DEMO,
     demoStaffPassword: e.DEMO_STAFF_PASSWORD,
 
@@ -224,16 +240,17 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     if (cfg.hashSecret === DEV_HASH || cfg.hashSecret.length < 32) problems.push("HASH_SECRET must be set to at least 32 random characters");
     if (cfg.encryptionKey === DEV_KEY) problems.push("ENCRYPTION_KEY must be set (openssl rand -hex 32)");
     if (cfg.sessionSecret === DEV_SESSION || cfg.sessionSecret.length < 32) problems.push("SESSION_SECRET must be set to at least 32 random characters");
-    if (cfg.allowDraftContent) problems.push("ALLOW_DRAFT_CONTENT must be false (only approved content in a pilot)");
+    // Staging is never used by real girls, so it may run before the content is approved and channels exist.
+    if (cfg.allowDraftContent && !staging) problems.push("ALLOW_DRAFT_CONTENT must be false (only approved content in a pilot)");
     if (!cfg.security.mfaRequired) problems.push("MFA_REQUIRED cannot be false in production");
-    if (cfg.demoMode) problems.push("DEMO_MODE must be false in production (demo data is fake)");
+    if (cfg.demoMode && !staging) problems.push("DEMO_MODE must be false in production (demo data is fake)");
     if (cfg.opsKey && cfg.opsKey.length < 24) problems.push("OPS_KEY must be at least 24 random characters");
     if (cfg.seedDemo) problems.push("SEED_DEMO must be false in production (create the first admin with: npm run create-admin)");
-    if (cfg.nurseAlertNumbers.length === 0) problems.push("NURSE_ALERT_NUMBERS must list at least one number: danger signs must always reach a human");
-    if (!cfg.africasTalking.apiKey || cfg.africasTalking.sandbox) {
+    if (cfg.nurseAlertNumbers.length === 0 && !staging) problems.push("NURSE_ALERT_NUMBERS must list at least one number: danger signs must always reach a human");
+    if ((!cfg.africasTalking.apiKey || cfg.africasTalking.sandbox) && !staging) {
       problems.push("AT_API_KEY and a live AT_USERNAME must be set: nurse alerts and Dada login codes are sent by SMS");
     }
-    if (!e.BASE_URL || !cfg.baseUrl.startsWith("https://")) problems.push("BASE_URL must be the public https:// address");
+    if (!publicUrl || !cfg.baseUrl.startsWith("https://")) problems.push("BASE_URL must be the public https:// address");
     if (!cfg.databaseUrl) problems.push("DATABASE_URL must point to Postgres (embedded PGlite is for development only)");
     if (cfg.whatsapp.token && !cfg.whatsapp.appSecret) problems.push("WHATSAPP_APP_SECRET must be set so webhook signatures are checked");
     if (cfg.whatsapp.token && cfg.whatsapp.verifyToken === "ubah-verify") problems.push("WHATSAPP_VERIFY_TOKEN must be changed from the default");

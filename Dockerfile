@@ -22,7 +22,7 @@ USER node
 EXPOSE 3000
 # Liveness only (the process answers). Load balancers should use /health, which also checks the database.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
-  CMD wget -qO- http://127.0.0.1:3000/health/live >/dev/null || exit 1
+  CMD wget -qO- "http://127.0.0.1:${PORT:-3000}/health/live" >/dev/null || exit 1
 # tini forwards SIGTERM so Ubah can shut down gracefully (finish jobs, close the database).
 ENTRYPOINT ["/sbin/tini", "--"]
 CMD ["node", "--import", "tsx", "src/server.ts"]

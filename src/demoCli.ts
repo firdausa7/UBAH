@@ -4,7 +4,7 @@ import { createDb } from "./db.js";
 import { loadDemo, wipeDemo } from "./demo.js";
 import { config } from "./config.js";
 
-if (config.production) {
+if (config.production && config.stage !== "staging") {
   console.error("Demo data is never loaded in production.");
   process.exit(1);
 }

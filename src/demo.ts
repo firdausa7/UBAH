@@ -79,7 +79,7 @@ export async function wipeDemo(db: Db): Promise<void> {
 }
 
 export async function loadDemo(db: Db, opts: { girls?: number; weeks?: number; seed?: number } = {}): Promise<{ girls: number; cases: number; passes: number }> {
-  if (config.production) throw new Error("Demo data is never loaded in production.");
+  if (config.production && config.stage !== "staging") throw new Error("Demo data is never loaded in production.");
   await wipeDemo(db);
   const r = rng(opts.seed ?? 2026);
   const girls = opts.girls ?? 140;

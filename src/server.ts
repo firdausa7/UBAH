@@ -28,7 +28,8 @@ import { handleDeskSms } from "./clinicDesk.js";
 import { handleUssd } from "./ussd.js";
 import { alertStaff, applySmsDelivery, applyWhatsAppStatus } from "./channels/outbound.js";
 import { processInboundNow, queueForSender, receive, recordInbound, recordInboundWithId, scheduleInboundRecovery } from "./channels/inbound.js";
-import { hashPhone } from "./privacy.js";
+import { hashPassword, hashPhone } from "./privacy.js";
+import { audit } from "./audit.js";
 import { applyMpesaResult } from "./payments/mpesa.js";
 import { refreshCaches } from "./caches.js";
 import { simulatorRouter } from "./web/simulator.js";
@@ -36,7 +37,7 @@ import { page, h1 } from "./web/html.js";
 import { csrfCookie, verifyCsrf } from "./security/csrf.js";
 import { rateLimit } from "./security/rateLimit.js";
 import { safeEqual } from "./privacy.js";
-import { seedDemo } from "./seed.js";
+import { importStarterContent, seedDemo } from "./seed.js";
 import { registerAllJobs, scheduleNextSweep } from "./jobs/handlers.js";
 import { setWorker, startWorker, type Worker } from "./jobs/queue.js";
 
@@ -302,9 +303,29 @@ export interface Running {
   shutdown(signal?: string): Promise<void>;
 }
 
+// First admin on a fresh online database (BOOTSTRAP_ADMIN_LOGIN / _PASSWORD), only while no admin exists.
+// She must choose her own password and set up two-step login at first login.
+export async function bootstrapAdmin(db: Db): Promise<boolean> {
+  const b = config.bootstrapAdmin;
+  if (!b) return false;
+  const [admin] = await db.query(`SELECT 1 FROM staff WHERE role = 'admin' AND active LIMIT 1`);
+  if (admin) return false;
+  const [s] = await db.query<{ id: number }>(
+    `INSERT INTO staff (name, role, login, password_hash, must_change_password) VALUES ('Administrator','admin',$1,$2,TRUE)
+     ON CONFLICT (login) DO UPDATE SET role = 'admin', active = TRUE, password_hash = EXCLUDED.password_hash, must_change_password = TRUE RETURNING id`,
+    [b.login, hashPassword(b.password)],
+  );
+  await audit(db, { action: "staff.create", targetType: "staff", targetId: s.id, details: { via: "bootstrap", login: b.login } });
+  log.warn({ login: b.login }, "first admin created from BOOTSTRAP_ADMIN_*; remove BOOTSTRAP_ADMIN_PASSWORD from the settings after logging in");
+  return true;
+}
+
 export async function start(): Promise<Running> {
   const db = await getDb(); // runs pending migrations
   if (config.seedDemo) await seedDemo(db);
+  await bootstrapAdmin(db);
+  // The online test version starts with the starter content as DRAFTS (safe to repeat).
+  if (config.stage === "staging") await importStarterContent(db);
   await bootstrapModels(db);
   await refreshCaches(db, { force: true });
   const app = createApp(db);

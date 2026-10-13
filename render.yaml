@@ -1,0 +1,50 @@
+# Render Blueprint: Ubah + Postgres in one step (Render dashboard → New → Blueprint → this repository).
+# This deploys the online TEST version (DEPLOY_STAGE=staging): secure, but for staff and test phones
+# only, never real girls. See README → "Put Ubah online (test version)".
+# Region: Frankfurt is the closest Render region to Kenya; data is stored in the EU (fine for testing;
+# the real pilot's hosting needs your legal adviser's approval, see docs/deployment.md).
+
+databases:
+  - name: ubah-db
+    databaseName: ubah
+    user: ubah
+    region: frankfurt
+    postgresMajorVersion: "16"
+    ipAllowList: [] # reachable only from your Render services, never from the internet
+
+services:
+  - type: web
+    name: ubah
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    region: frankfurt
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DEPLOY_STAGE
+        value: staging
+      - key: DATABASE_URL
+        fromDatabase:
+          name: ubah-db
+          property: connectionString
+      # Secrets: generated once by Render. Never change them after real data exists.
+      - key: HASH_SECRET
+        generateValue: true
+      - key: ENCRYPTION_KEY
+        generateValue: true
+      - key: SESSION_SECRET
+        generateValue: true
+      - key: OPS_KEY
+        generateValue: true
+      - key: TRUST_PROXY
+        value: "1"
+      - key: SEED_DEMO
+        value: "false"
+      - key: ALLOW_DRAFT_CONTENT
+        value: "true" # test version only: shows unpublished drafts so the team can try them
+      # Your first admin login. You type the password in the Render dashboard (it is not in this file).
+      - key: BOOTSTRAP_ADMIN_LOGIN
+        sync: false
+      - key: BOOTSTRAP_ADMIN_PASSWORD
+        sync: false

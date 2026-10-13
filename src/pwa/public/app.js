@@ -110,6 +110,7 @@ async function loadStrings(lang) {
   const r = await api(`/strings?lang=${encodeURIComponent(lang || "en")}`);
   S.strings = r.strings;
   S.languages = r.languages;
+  S.staging = r.stage === "staging";
   document.documentElement.lang = r.lang;
 }
 
@@ -157,6 +158,7 @@ function tabs(current) {
 function mount(view, ...content) {
   const root = document.getElementById("app");
   root.textContent = "";
+  if (S.staging) root.append(h("div", { class: "offline", role: "status" }, "TEST VERSION — not for real health questions."));
   if (!navigator.onLine) root.append(h("div", { class: "offline", role: "status" }, tr("app_offline")));
   root.append(header(), h("section", { class: "view" }, content), tabs(view));
 }

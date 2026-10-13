@@ -40,7 +40,7 @@ describe("config validation", () => {
       expect(err).toBeInstanceOf(ConfigError);
       const msg = (err as Error).message;
       expect(msg).toContain("PORT");
-      expect(msg).toContain("ENCRYPTION_KEY: must be 64 hex characters");
+      expect(msg).toContain("ENCRYPTION_KEY: must be 32 bytes");
       expect(msg).toContain("ALLOW_DRAFT_CONTENT");
     }
   });

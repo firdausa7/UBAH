@@ -3,7 +3,7 @@ import type { Db } from "../db.js";
 import { config } from "../config.js";
 import { refreshCaches } from "../caches.js";
 import { LANGUAGES, t } from "../i18n.js";
-import { esc } from "./html.js";
+import { esc, STAGING_BANNER } from "./html.js";
 
 // The public landing page at "/": the Ubah story (ubah is Somali for "flower"), how the closed loop
 // works, how to reach Ubah, and the privacy promise. Every sentence is a "land_…" string in the
@@ -82,7 +82,7 @@ h3{font-size:19px;color:var(--ink);margin:10px 0 6px}
 footer{max-width:1040px;margin:0 auto;padding:28px 20px 48px;font-size:14px;color:var(--muted);display:flex;flex-wrap:wrap;gap:12px 24px;justify-content:space-between}
 @media (max-width:720px){.hero{grid-template-columns:1fr}.hero svg{max-width:200px;order:-1}section{padding:40px 0}header{flex-wrap:wrap}.langs{order:3;width:100%}}
 </style></head><body>
-<header><a class="brand" href="/?lang=${esc(lang)}">${FLOWER_SVG(30)}ubah</a><nav class="langs" aria-label="Language">${langs}</nav><a class="exit" href="https://www.google.com/search?q=weather+today" data-quick-exit rel="noreferrer">${L("app_quick_exit")}</a></header>
+${config.stage === "staging" ? STAGING_BANNER : ""}<header><a class="brand" href="/?lang=${esc(lang)}">${FLOWER_SVG(30)}ubah</a><nav class="langs" aria-label="Language">${langs}</nav><a class="exit" href="https://www.google.com/search?q=weather+today" data-quick-exit rel="noreferrer">${L("app_quick_exit")}</a></header>
 <main>
 
 <section class="hero">
