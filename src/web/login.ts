@@ -53,7 +53,7 @@ interface LoginRow {
 async function loadStaff(db: Db, where: "id" | "login", value: unknown): Promise<LoginRow | undefined> {
   const [row] = await db.query<LoginRow>(
     `SELECT id, login, role, password_hash, active, locked_until, phone, totp_secret_enc, totp_enabled_at, totp_last_step, must_change_password
-       FROM staff WHERE ${where} = $1`,
+       FROM staff WHERE ${where === "login" ? "lower(login) = lower($1)" : "id = $1"}`,
     [value],
   );
   return row;
@@ -183,7 +183,8 @@ export function loginRouter(db: Db, opts: { loginLimiter: RequestHandler }): Rou
   });
 
   r.post("/login", opts.loginLimiter, async (req, res) => {
-    const login = String(req.body.login ?? "").trim().slice(0, 100);
+    // Logins are lower-case; phones often capitalise the first letter, so ignore case and spaces.
+    const login = String(req.body.login ?? "").trim().toLowerCase().slice(0, 100);
     const password = String(req.body.password ?? "");
     const next = safeNext(req.body.next);
     const s = login ? await loadStaff(db, "login", login) : undefined;

@@ -133,6 +133,11 @@ describe("password login, lockout and sessions", () => {
     expect(after.headers.location).toContain("/staff/login");
   });
 
+  it("accepts the login whatever its capitals or surrounding spaces (phones capitalise)", async () => {
+    await addStaff("desk9", "clinic");
+    expect((await passwordStep("  Desk9 ")).res.headers.location).toBe("/staff/clinic");
+  });
+
   it("ignores off-site redirects after login", async () => {
     await addStaff("desk3", "clinic");
     const agent = request.agent(app);
