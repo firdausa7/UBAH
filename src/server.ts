@@ -22,7 +22,7 @@ import { bootstrapModels } from "./ml/registry.js";
 import { handleDeskSms } from "./clinicDesk.js";
 import { handleUssd } from "./ussd.js";
 import { alertStaff, applySmsDelivery, applyWhatsAppStatus } from "./channels/outbound.js";
-import { processInbound, recordInbound, recordInboundWithId, scheduleInboundRecovery } from "./channels/inbound.js";
+import { processInboundNow, queueForSender, receive, recordInbound, recordInboundWithId, scheduleInboundRecovery } from "./channels/inbound.js";
 import { hashPhone } from "./privacy.js";
 import { applyMpesaResult } from "./payments/mpesa.js";
 import { refreshCaches } from "./caches.js";
@@ -140,19 +140,13 @@ export function createApp(db: Db, opts: AppOptions = {}) {
     }
     res.sendStatus(200); // Meta expects a fast 200; work continues below.
     const { messages, statuses } = parseWhatsAppWebhook(req.body);
+    // Join each sender's queue now, before anything asynchronous, so arrival order is kept.
+    const handled = messages.map((m) => receive(db, { provider: "whatsapp", message: m }).catch((err) => log.error({ err: (err as Error).message, channel: "whatsapp" }, "failed to handle message")));
+    track(Promise.all(handled));
     track(
       (async () => {
         for (const s of statuses) {
           await applyWhatsAppStatus(db, s).catch((err) => log.error({ err: (err as Error).message }, "failed to apply WhatsApp status"));
-        }
-        for (const m of messages) {
-          try {
-            // Recorded first: a duplicate delivery is ignored, a crash is recovered.
-            const id = await recordInbound(db, { provider: "whatsapp", message: m });
-            if (id) await processInbound(db, id);
-          } catch (err) {
-            log.error({ err: (err as Error).message, channel: "whatsapp" }, "failed to record message");
-          }
         }
       })(),
     );
@@ -166,14 +160,14 @@ export function createApp(db: Db, opts: AppOptions = {}) {
     if (!m) return res.sendStatus(400);
     res.sendStatus(200);
     track(
-      (async () => {
+      queueForSender(m.from, async () => {
         // Clinic desks check passes by SMS from their registered phone; everyone else is a girl.
         const desk = await handleDeskSms(db, m.from, m.text.slice(0, 200));
         if (desk !== null) return void (await alertStaff(db, m.from, desk));
         const payload = { provider: "sms" as const, from: m.from, text: m.text };
         const id = m.id ? await recordInboundWithId(db, "sms", m.id, payload) : await recordInbound(db, payload);
-        if (id) await processInbound(db, id);
-      })().catch((err) => log.error({ err: (err as Error).message, channel: "sms" }, "failed to handle message")),
+        if (id) await processInboundNow(db, id);
+      }).catch((err) => log.error({ err: (err as Error).message, channel: "sms" }, "failed to handle message")),
     );
   });
 

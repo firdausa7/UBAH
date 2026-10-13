@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { Db } from "../db.js";
-import { decryptSecret, encryptSecret } from "../privacy.js";
+import { decryptSecret, encryptSecret, hashPhone } from "../privacy.js";
 import { handleIncoming } from "../engine.js";
 import { downloadWhatsAppMedia, type InboundWhatsApp } from "./whatsapp.js";
 import { enqueue } from "../jobs/queue.js";
@@ -33,7 +33,44 @@ export async function recordInboundWithId(db: Db, provider: "sms", providerId: s
   return rows[0]?.id ?? null;
 }
 
+// One girl's messages are handled one after another, in the order they arrived, so two quick
+// messages (or a duplicate webhook) never race over her conversation state.
+const chains = new Map<string, Promise<void>>();
+
+// Runs fn after every earlier job for the same sender. Called the moment a webhook arrives, before
+// anything asynchronous, so arrival order is kept.
+export function queueForSender(phone: string, fn: () => Promise<void>): Promise<void> {
+  const key = hashPhone(phone);
+  const run = (chains.get(key) ?? Promise.resolve()).then(fn);
+  const tail = run.catch(() => {});
+  chains.set(key, tail);
+  tail.then(() => {
+    if (chains.get(key) === tail) chains.delete(key);
+  });
+  return run;
+}
+
+// Records and handles one inbound message, in order for its sender (used by the webhooks).
+export function receive(db: Db, p: InboundPayload, providerId?: string): Promise<void> {
+  const sender = p.provider === "sms" ? p.from : p.message.from;
+  return queueForSender(sender, async () => {
+    const id = providerId ? await recordInboundWithId(db, "sms", providerId, p) : await recordInbound(db, p);
+    if (id) await processNow(db, id);
+  });
+}
+
+// Recovery path: a recorded message, queued behind anything else from the same sender.
 export async function processInbound(db: Db, id: number): Promise<void> {
+  const [row] = await db.query<{ payload_enc: string | null }>(`SELECT payload_enc FROM inbound_messages WHERE id = $1 AND processed_at IS NULL`, [id]);
+  if (!row?.payload_enc) return;
+  const p = JSON.parse(decryptSecret(row.payload_enc)) as InboundPayload;
+  return queueForSender(p.provider === "sms" ? p.from : p.message.from, () => processNow(db, id));
+}
+
+// Handles a recorded message right away. Only call it from inside the sender's queue.
+export const processInboundNow = (db: Db, id: number) => processNow(db, id);
+
+async function processNow(db: Db, id: number): Promise<void> {
   const claimed = await db.query<{ payload_enc: string }>(
     `UPDATE inbound_messages SET attempts = attempts + 1 WHERE id = $1 AND processed_at IS NULL AND payload_enc IS NOT NULL RETURNING payload_enc`,
     [id],

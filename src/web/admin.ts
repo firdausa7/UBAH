@@ -302,6 +302,9 @@ ${field("Area / block / town", "area", c.area, { required: true })}
 ${field("Opening hours", "hours", c.hours, { required: true, hint: "e.g. Mon–Fri 8am–5pm" })}
 ${field("Kenya Master Facility List code", "mfl_code", c.mfl_code ?? "", { hint: "5 digits, from kmhfr.health.go.ke", attrs: 'inputmode="numeric" pattern="\\d{5}"' })}
 ${select("Site", "site_id", siteRows.map((s) => [String(s.id), s.name]), c.site_id ?? "", { blank: "Not set" })}
+${field("Latitude", "lat", c.lat ?? "", { hint: "Optional, e.g. 0.0512 (for 'nearest clinic')", attrs: 'inputmode="decimal"' })}
+${field("Longitude", "lng", c.lng ?? "", { hint: "Optional, e.g. 40.3121", attrs: 'inputmode="decimal"' })}
+${field("Landmarks girls use", "landmarks", (c.landmarks ?? []).join(", "), { hint: "Comma-separated: nearby market, school, mosque, block names" })}
 </div>${checks("Services offered", "services", Object.entries(SERVICES), c.services ?? [])}
 <label class="inline"><input type="checkbox" name="free" value="1"${c.free !== false ? " checked" : ""}> Services are free for girls</label>
 <label class="inline"><input type="checkbox" name="verified" value="1"${c.verified ? " checked" : ""}> Verified: a staff member has visited and confirmed the services, hours and youth-friendly care</label>
@@ -316,7 +319,15 @@ ${textarea("Notes for staff", "notes", c.notes ?? "", { rows: 2 })}
     const mfl = text(req.body.mfl_code, 10);
     const services = many(req.body.services).filter((s) => s in SERVICES);
     if (!name || !area || !hours || services.length === 0 || (mfl && !/^\d{5}$/.test(mfl))) return null;
-    return { name, area, hours, mfl: mfl || null, services, siteId: int(req.body.site_id), free: Boolean(req.body.free), verified: Boolean(req.body.verified), notes: text(req.body.notes, 1000) };
+    // Coordinates are optional but must come as a valid pair (Kenya is roughly lat -5..5, lng 33..42).
+    const latRaw = text(req.body.lat, 20);
+    const lngRaw = text(req.body.lng, 20);
+    const lat = latRaw ? Number(latRaw) : null;
+    const lng = lngRaw ? Number(lngRaw) : null;
+    if ((lat == null) !== (lng == null)) return null;
+    if (lat != null && (!Number.isFinite(lat) || lat < -5.5 || lat > 5.5 || !Number.isFinite(lng!) || lng! < 33 || lng! > 42.5)) return null;
+    const landmarks = String(req.body.landmarks ?? "").split(",").map((x) => x.trim().slice(0, 60)).filter(Boolean).slice(0, 20);
+    return { name, area, hours, mfl: mfl || null, services, siteId: int(req.body.site_id), free: Boolean(req.body.free), verified: Boolean(req.body.verified), notes: text(req.body.notes, 1000), lat, lng, landmarks };
   }
 
   r.get("/admin/clinics/new", admin, async (req, res) => {
@@ -326,8 +337,8 @@ ${textarea("Notes for staff", "notes", c.notes ?? "", { rows: 2 })}
     const b = readClinicBody(req);
     if (!b) return res.redirect("/staff/admin/clinics/new?error=invalid");
     const [c] = await db.query<{ id: number }>(
-      `INSERT INTO clinics (name, area, hours, mfl_code, services, site_id, free, verified, notes) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id`,
-      [b.name, b.area, b.hours, b.mfl, b.services, b.siteId, b.free, b.verified, b.notes],
+      `INSERT INTO clinics (name, area, hours, mfl_code, services, site_id, free, verified, notes, lat, lng, landmarks) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING id`,
+      [b.name, b.area, b.hours, b.mfl, b.services, b.siteId, b.free, b.verified, b.notes, b.lat, b.lng, b.landmarks],
     );
     await auditReq(db, req, { action: "clinic.create", targetType: "clinic", targetId: c.id, details: { verified: b.verified } });
     res.redirect(`/staff/admin/clinics/${c.id}?done=created`);
@@ -347,8 +358,8 @@ ${textarea("Notes for staff", "notes", c.notes ?? "", { rows: 2 })}
     if (!id) return res.status(404).send("Not found");
     if (!b) return res.redirect(`/staff/admin/clinics/${id}?error=invalid`);
     const done = await db.query(
-      `UPDATE clinics SET name=$2, area=$3, hours=$4, mfl_code=$5, services=$6, site_id=$7, free=$8, verified=$9, notes=$10, updated_at=now() WHERE id=$1 RETURNING id`,
-      [id, b.name, b.area, b.hours, b.mfl, b.services, b.siteId, b.free, b.verified, b.notes],
+      `UPDATE clinics SET name=$2, area=$3, hours=$4, mfl_code=$5, services=$6, site_id=$7, free=$8, verified=$9, notes=$10, lat=$11, lng=$12, landmarks=$13, updated_at=now() WHERE id=$1 RETURNING id`,
+      [id, b.name, b.area, b.hours, b.mfl, b.services, b.siteId, b.free, b.verified, b.notes, b.lat, b.lng, b.landmarks],
     );
     if (!done.length) return res.status(404).send("Not found");
     await auditReq(db, req, { action: "clinic.update", targetType: "clinic", targetId: id, details: { verified: b.verified, services: b.services } });

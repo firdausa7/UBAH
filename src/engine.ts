@@ -335,7 +335,8 @@ export async function sendCheckin(db: Db, checkinId: number): Promise<CheckinRes
   const claimed = await db.query(`UPDATE checkins SET sent_at = now() WHERE id = $1 AND sent_at IS NULL RETURNING id`, [row.id]);
   if (claimed.length === 0) return "skipped";
   await setState(db, user, { step: "checkin_visited", checkinId: row.id, passCode: row.pass_code });
-  await say(db, user, "checkin_visited", { code: row.pass_code });
+  // Marked as a check-in: outside WhatsApp's 24-hour window it goes as the approved template or by SMS.
+  await sendToUser(db, user, t(user.language, "checkin_visited", { code: row.pass_code }), null, null, { kind: "checkin", checkinCode: row.pass_code });
   return "sent";
 }
 

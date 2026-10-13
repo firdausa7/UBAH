@@ -135,22 +135,18 @@ export function search(query: string, opts: { topic?: string; limit?: number; la
   const docTokens = docs.map(toksOf);
   const qByLang = new Map(langs.map((l) => [l, tokenize(query, l)]));
   if ([...qByLang.values()].every((q) => q.length === 0)) return [];
-  // Collection statistics per language, over the whole library (stable while few topics are published).
-  const stats = new Map<string, { N: number; avg: number; df: Map<string, number> }>();
-  for (const l of langs) {
-    const lib = librarySource.filter((c) => c.language === l);
-    const served = docs.filter((c) => c.language === l);
-    const sDocs = (lib.length >= served.length ? lib : served).map(toksOf);
-    const df = new Map<string, number>();
-    for (const toks of sDocs) for (const t of new Set(toks)) df.set(t, (df.get(t) ?? 0) + 1);
-    stats.set(l, { N: sDocs.length, avg: sDocs.reduce((a, t) => a + t.length, 0) / Math.max(sDocs.length, 1), df });
-  }
+  // Collection statistics over the whole library in every language (each document tokenized in its
+  // own language), so scores stay stable while only a few topics are published in a language.
+  const libDocs = (librarySource.length >= docs.length ? librarySource : docs).map(toksOf);
+  const df = new Map<string, number>();
+  for (const toks of libDocs) for (const t of new Set(toks)) df.set(t, (df.get(t) ?? 0) + 1);
+  const N = libDocs.length;
+  const avg = libDocs.reduce((a, t) => a + t.length, 0) / Math.max(N, 1);
   const k1 = 1.2,
     b = 0.75;
   const hits = docs.map((item, i) => {
     const toks = docTokens[i];
     const q = qByLang.get(item.language) ?? [];
-    const { N, avg, df } = stats.get(item.language)!;
     const tf = new Map<string, number>();
     for (const t of toks) tf.set(t, (tf.get(t) ?? 0) + 1);
     let score = 0;

@@ -41,8 +41,9 @@ function stemEn(t: string): string {
 }
 
 // Strips one Somali suffix, keeping a stem of at least 3 letters ("dhiigga" -> "dhiig", "caloosha" -> "caloo").
+const SO_SUFFIXES_LONGEST_FIRST = [...SO_SUFFIXES].sort((a, b) => b.length - a.length);
 export function stemSo(t: string): string {
-  for (const s of SO_SUFFIXES) {
+  for (const s of SO_SUFFIXES_LONGEST_FIRST) {
     if (t.length - s.length >= 3 && t.endsWith(s)) {
       let stem = t.slice(0, -s.length);
       // "dhiigga": the article doubles the last consonant.
