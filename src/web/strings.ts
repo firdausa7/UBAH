@@ -9,6 +9,7 @@ import { requireRole, staffOf } from "./auth.js";
 import { page, esc, h1, field, select, textarea, notice, statusTag, when } from "./html.js";
 import { nav } from "./nav.js";
 import { actorOf, CATEGORIES } from "./content.js";
+import { draftProblem, draftString } from "../ai/translate.js";
 
 // Translation studio (every string in src/i18n.ts) and Glossary studio (coded words).
 // Translations follow the same review workflow as health content.
@@ -55,7 +56,8 @@ export function stringsRouter(db: Db): Router {
     );
   });
 
-  const stringPage = async (req: Request, key: string, lang: string, error = "") => {
+  // `aiText`: an AI first draft shown in the form, not saved until the translator saves it.
+  const stringPage = async (req: Request, key: string, lang: string, error = "", aiText?: string) => {
     const me = staffOf(req);
     const versions = await db.query(
       `SELECT v.*, a.name AS author FROM string_versions v LEFT JOIN staff a ON a.id = v.author_id WHERE key = $1 AND language = $2 ORDER BY version DESC`,
@@ -80,11 +82,18 @@ export function stringsRouter(db: Db): Router {
       workBlock = `<div class="card"><p>${statusTag(work.status)} v${work.version} by ${esc(work.author ?? "—")}${work.reviewer_name ? ` · approved by ${esc(work.reviewer_name)}` : ""}</p>${work.review_note ? `<div class="notice">Reviewer's note: ${esc(work.review_note)}</div>` : ""}
 <p style="white-space:pre-wrap;font-size:17px">${esc(work.text)}</p><div class="row">${actions.join("")}</div></div>`;
     }
-    const form =
-      writer && (!work || work.status === "draft")
-        ? `<form method="post" action="/staff/translations/${esc(key)}/${lang}" class="card">${csrfField(req)}${textarea(`${LANGUAGES[lang]} translation`, "text", work?.text ?? pub?.text ?? "", { rows: 5, required: true, hint: `Keep these exactly: ${placeholdersOf(en[key]).join(" ") || "(none)"}` })}
-<p class="row"><button class="accent" name="step" value="save">Save draft</button><button class="secondary" name="step" value="submit">Save and send for review</button></p></form>`
+    const editable = writer && (!work || work.status === "draft");
+    const aiButton = editable
+      ? `<form method="post" action="/staff/translations/${esc(key)}/${lang}/ai-draft" class="row">${csrfField(req)}<button class="secondary small">Draft with AI</button><span class="muted">Fills in the box below for you to check. Nothing is saved until you save it.</span></form>`
+      : "";
+    const aiWarning =
+      aiText !== undefined
+        ? `<div class="notice" role="status"><strong>AI first draft: not saved yet.</strong> Check every word against the English and fix anything that sounds wrong, then save it. A reviewer who speaks ${esc(LANGUAGES[lang])} must still approve it.</div>`
         : "";
+    const form = editable
+      ? `${aiWarning}<form method="post" action="/staff/translations/${esc(key)}/${lang}" class="card">${csrfField(req)}${textarea(`${LANGUAGES[lang]} translation`, "text", aiText ?? work?.text ?? pub?.text ?? "", { rows: 5, required: true, hint: `Keep these exactly: ${placeholdersOf(en[key]).join(" ") || "(none)"}` })}
+<p class="row"><button class="accent" name="step" value="save">Save draft</button><button class="secondary" name="step" value="submit">Save and send for review</button></p></form>${aiButton}`
+      : "";
     return page(
       `${key} · ${LANGUAGES[lang]}`,
       `${back(`/staff/translations?lang=${lang}`, "Translations")}${h1(key, `· ${LANGUAGES[lang]}`, "Translation")}${notice(req.query)}${error ? `<div class="notice" role="alert">${esc(error)}</div>` : ""}
@@ -106,6 +115,17 @@ ${workBlock}${form}
     const k = validKey(req);
     if (!k) return res.status(404).send(page("Not found", "Not found.", nav(req)));
     res.send(await stringPage(req, k.key, k.lang));
+  });
+
+  // AI first draft, shown in the form for the translator to check (never saved here).
+  r.post("/translations/:key/:lang/ai-draft", writers, async (req, res) => {
+    const k = validKey(req);
+    if (!k) return res.status(404).send("Not found");
+    const d = await draftString(k.lang, en[k.key]);
+    await auditReq(db, req, { action: "translation.ai_draft", targetType: "string", targetId: k.key, details: { lang: k.lang, ok: d.ok } });
+    if (!d.ok) return res.send(await stringPage(req, k.key, k.lang, draftProblem(d.reason)));
+    const kept = placeholdersOf(d.value).join() === placeholdersOf(en[k.key]).join();
+    res.send(await stringPage(req, k.key, k.lang, kept ? "" : `The AI changed a placeholder. Put back exactly: ${placeholdersOf(en[k.key]).join(" ")}`, d.value));
   });
 
   r.post("/translations/:key/:lang", writers, async (req, res) => {

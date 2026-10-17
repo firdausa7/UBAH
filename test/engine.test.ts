@@ -90,6 +90,15 @@ describe("the closed loop: question -> answer -> pass -> check-in -> dignity sco
     expect(cases.map((c) => c.reason).sort()).toEqual(["danger_safety", "danger_selfharm"]);
   });
 
+  it("treats a girl at risk of FGM as urgent", async () => {
+    const g = girl(db, "0712000116");
+    await g.send("hi");
+    await g.send("3");
+    await g.send("my family is going to circumcise me next week");
+    const [c] = await db.query(`SELECT reason, urgent FROM cases ORDER BY id DESC LIMIT 1`);
+    expect(c).toMatchObject({ reason: "danger_safety", urgent: true });
+  });
+
   it("says it doesn't know rather than guessing", async () => {
     const g = girl(db, "0712000107");
     await g.send("hi");

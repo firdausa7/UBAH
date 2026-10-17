@@ -95,6 +95,26 @@ describe("app API", () => {
     expect(en.body.strings.app_pass_valid).toBe("Valid until {date}"); // placeholders left for the app
   });
 
+  it("gives every word the app shows a translatable string, with no hard-coded language", async () => {
+    const js = (await request(app).get("/app/app.js")).text;
+    const en = (await request(app).get("/app/api/strings?lang=en")).body.strings;
+    const used = new Set([...js.matchAll(/tr\("([a-z0-9_]+)"/g)].map((m) => m[1]));
+    for (const k of ["app_ex_1", "app_ex_2", "app_ex_3", "app_ex_4"]) used.add(k); // passed to tr() from a list
+    expect(used.size).toBeGreaterThan(40);
+    for (const k of used) expect(en[k], k).toBeTruthy();
+    expect(js).not.toContain("Salaan"); // the greeting comes from app_hello, so translators own it
+    // "Talk to a person" sends DADA, the command every channel understands in every language.
+    expect(js).toContain('sendText("DADA")');
+  });
+
+  it("the Talk to a person button opens a case for the care team", async () => {
+    const { token } = await session();
+    await request(app).patch("/app/api/me").set("authorization", `Bearer ${token}`).send({ language: "so" });
+    await request(app).post("/app/api/messages").set("authorization", `Bearer ${token}`).send({ text: "DADA" });
+    const cases = await db.query(`SELECT reason FROM cases ORDER BY id DESC LIMIT 1`);
+    expect(cases[0].reason).toBe("asked_for_person");
+  });
+
   it("sends a danger sign to a human from the very first message", async () => {
     const { call } = await session();
     const res = await call("post", "/messages").send({ text: "i want to end my life" });

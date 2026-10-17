@@ -178,8 +178,14 @@ export function appApiRouter(db: Db, opts: { sessionsPerHour?: number; requestsP
       .filter((c) => c.language === "en")
       .map((c) => localize(c, lang))
       .map(({ item, translated }) => ({ id: item.id, category: item.topic, title: item.title, body: item.body, translated, audio: translated && item.audioMediaId ? `/app/api/audio/${item.audioMediaId}` : null }));
+    // Sections whose topics are still being written: shown as "coming soon" (no text, only the section name).
+    const ready = new Set(lessons.map((l) => l.category));
+    const waiting = await db.query<{ category: string }>(
+      `SELECT DISTINCT t.category FROM content_topics t WHERE NOT t.archived AND NOT EXISTS (SELECT 1 FROM content_versions v WHERE v.topic_id = t.id AND v.status = 'published')`,
+    );
+    const upcoming = waiting.map((w) => w.category).filter((c) => !ready.has(c)).sort();
     res.setHeader("Cache-Control", "no-cache");
-    res.json({ lang, lessons, draft: config.allowDraftContent });
+    res.json({ lang, lessons, upcoming, draft: config.allowDraftContent });
   });
 
   // Audio only for recordings attached to content that is being served (public health content).

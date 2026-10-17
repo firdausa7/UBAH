@@ -16,7 +16,7 @@ import { handleDeskUssd } from "./clinicDesk.js";
 const MAX = 182;
 const con = (s: string) => `CON ${s}`.slice(0, MAX);
 const end = (s: string) => `END ${s}`.slice(0, MAX);
-const CATEGORY_ORDER = ["periods", "pregnancy", "family_planning", "sti", "safety", "body", "feelings", "other"];
+const CATEGORY_ORDER = ["periods", "conditions", "pregnancy", "family_planning", "sti", "safety", "fgm", "body", "feelings", "other"];
 const URGENT: Record<string, { reason: string; services: string[] }> = {
   "1": { reason: "danger_medical", services: ["antenatal", "pregnancy_test", "period_care"] },
   "2": { reason: "danger_safety", services: ["safety", "counselling"] },

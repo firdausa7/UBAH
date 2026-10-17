@@ -12,6 +12,7 @@ import { requireRole, staffOf } from "./auth.js";
 import { page, esc, h1, field, select, checks, textarea, many, notice, statusTag, when } from "./html.js";
 import { nav } from "./nav.js";
 import { readAudioUpload } from "./upload.js";
+import { AI_DRAFT_NOTE, draftContent, draftProblem } from "../ai/translate.js";
 
 // Content studio: health answers, written by editors, approved by a named health-partner reviewer,
 // then published. Only published versions reach girls in production.
@@ -22,6 +23,8 @@ export const CATEGORIES: Record<string, string> = {
   family_planning: "Family planning",
   sti: "Infections and HIV",
   safety: "Safety and violence",
+  conditions: "Period and womb conditions (PCOS, endometriosis)",
+  fgm: "FGM: care and support",
   body: "Body and growing up",
   feelings: "Feelings",
   other: "Other",
@@ -67,7 +70,7 @@ export function contentRouter(db: Db): Router {
     );
     const rows = topics
       .map(
-        (t) => `<tr${t.archived ? ' style="opacity:.55"' : ""}><td><a href="/staff/content/${esc(t.id)}"><strong>${esc(t.id)}</strong></a><div class="muted">${esc(CATEGORIES[t.category] ?? t.category)}${t.archived ? " · archived" : ""}</div></td>${LANGS.map((l) => `<td>${cell(t.id, l)}</td>`).join("")}</tr>`,
+        (t) => `<tr${t.archived ? ' style="opacity:.55"' : ""}><td><a href="/staff/content/${esc(t.id)}"><strong>${esc(t.id)}</strong></a><div class="muted">${esc(CATEGORIES[t.category] ?? t.category)}${t.archived ? " · archived" : ""}</div>${versions.some((v) => v.topic_id === t.id) ? "" : `<span class="tag warn">Needs writing</span>`}</td>${LANGS.map((l) => `<td>${cell(t.id, l)}</td>`).join("")}</tr>`,
       )
       .join("");
     res.send(
@@ -178,12 +181,13 @@ ${canWrite && !t.archived && (!work || work.status === "draft") ? `<p><a class="
     const settings = canWrite
       ? `<form method="post" action="/staff/content/${esc(t.id)}/settings" class="card">${csrfField(req)}<h2>Topic settings</h2>
 ${select("Category", "category", Object.entries(CATEGORIES), t.category, { required: true })}${checks("Clinic services this topic can refer to", "services", Object.entries(SERVICES), t.services)}
+${textarea("Brief for writers (never sent to girls)", "brief", t.brief ?? "", { rows: 3, hint: "What this topic should cover and who should write it" })}
 <label class="inline"><input type="checkbox" name="archived" value="1"${t.archived ? " checked" : ""}> Archived (never sent to girls)</label><p><button class="small">Save settings</button></p></form>`
       : "";
     res.send(
       page(
         t.id,
-        `${back("/staff/content", "Content studio")}${h1(t.id, "", CATEGORIES[t.category] ?? t.category)}${notice(req.query)}
+        `${back("/staff/content", "Content studio")}${h1(t.id, "", CATEGORIES[t.category] ?? t.category)}${notice(req.query)}${briefCard(t.brief)}
 <div class="cols" style="margin-bottom:16px">${LANGS.map(column).join("")}</div>${settings}
 <div class="card"><h2>Version history</h2><div class="scroll"><table><thead><tr><th>Version</th><th>Status</th><th>Author</th><th>Approved by</th><th>When</th></tr></thead><tbody>${history}</tbody></table></div></div>`,
         nav(req),
@@ -194,11 +198,12 @@ ${select("Category", "category", Object.entries(CATEGORIES), t.category, { requi
   r.post("/content/:topic/settings", writers, async (req, res) => {
     const category = String(req.body.category ?? "");
     if (!(category in CATEGORIES)) return res.redirect(`/staff/content/${encodeURIComponent(String(req.params.topic))}?error=invalid`);
-    const done = await db.query(`UPDATE content_topics SET category = $2, services = $3, archived = $4 WHERE id = $1 RETURNING id`, [
+    const done = await db.query(`UPDATE content_topics SET category = $2, services = $3, archived = $4, brief = $5 WHERE id = $1 RETURNING id`, [
       String(req.params.topic),
       category,
       many(req.body.services).filter((s) => s in SERVICES),
       Boolean(req.body.archived),
+      text(req.body.brief, 2000),
     ]);
     if (!done.length) return res.status(404).send("Not found");
     invalidateCaches();
@@ -207,7 +212,8 @@ ${select("Category", "category", Object.entries(CATEGORIES), t.category, { requi
   });
 
   // ---- Write or edit a draft ----
-  const editPage = async (req: Request, res: Response, error = "") => {
+  // `aiDraft`: an AI first draft to show in the form, not saved until the translator saves it.
+  const editPage = async (req: Request, res: Response, error = "", aiDraft?: { title: string; body: string; keywords: string[]; sources: string }) => {
     const topicId = String(req.params.topic);
     const lang = String(req.params.lang);
     const [t] = await db.query(`SELECT * FROM content_topics WHERE id = $1`, [topicId]);
@@ -216,15 +222,19 @@ ${select("Category", "category", Object.entries(CATEGORIES), t.category, { requi
     if (work && work.status !== "draft") return res.redirect(`/staff/content/versions/${work.id}?error=state`);
     const [pub] = await db.query(`SELECT * FROM content_versions WHERE topic_id = $1 AND language = $2 AND status = 'published'`, [topicId, lang]);
     const [enRef] = lang === "en" ? [] : await db.query(`SELECT * FROM content_versions WHERE topic_id = $1 AND language = 'en' AND status IN ('published','approved','in_review','draft') ORDER BY (status='published') DESC, version DESC LIMIT 1`, [topicId]);
-    const start = work ?? pub ?? (lang === "en" ? {} : { keywords: [], sources: enRef?.sources ?? "" });
+    const start = aiDraft ?? work ?? pub ?? (lang === "en" ? {} : { keywords: [], sources: enRef?.sources ?? "" });
+    const aiButton = `<form method="post" action="/staff/content/${esc(topicId)}/${lang}/ai-draft" style="margin-top:10px">${csrfField(req)}<button class="secondary small">Draft with AI</button> <span class="muted">Fills in the form below for you to check. Nothing is saved until you save it.</span></form>`;
     const reference = enRef
-      ? `<div class="card"><div class="eyebrow">English text to translate (${statusTag(enRef.status)} v${enRef.version})</div><h2>${esc(enRef.title)}</h2><p style="white-space:pre-wrap">${esc(enRef.body)}</p><p class="muted">Keywords: ${esc(enRef.keywords.join(", "))}</p></div>`
+      ? `<div class="card"><div class="eyebrow">English text to translate (${statusTag(enRef.status)} v${enRef.version})</div><h2>${esc(enRef.title)}</h2><p style="white-space:pre-wrap">${esc(enRef.body)}</p><p class="muted">Keywords: ${esc(enRef.keywords.join(", "))}</p>${aiButton}</div>`
+      : "";
+    const aiWarning = aiDraft
+      ? `<div class="notice" role="status"><strong>AI first draft: not saved yet.</strong> Read every sentence against the English. Fix anything that sounds wrong or unnatural, then save it. A reviewer who speaks ${esc(LANGUAGES[lang])} must still approve it before girls see it.</div>`
       : "";
     res.send(
       page(
         `Edit ${topicId}`,
         `${back(`/staff/content/${topicId}`, topicId)}${h1(work ? "Edit" : "Write", `${LANGUAGES[lang]} draft`, topicId)}${error ? `<div class="notice" role="alert">${esc(error)}</div>` : ""}
-<p class="lead">Use only facts from WHO or Kenya Ministry of Health guidance. Short sentences a 14-year-old understands. This is a DRAFT until a health-partner reviewer approves it.</p>${reference}
+<p class="lead">Use only facts from WHO or Kenya Ministry of Health guidance. Short sentences a 14-year-old understands. This is a DRAFT until a health-partner reviewer approves it.</p>${lang === "en" ? briefCard(t.brief) : ""}${reference}${aiWarning}
 <form method="post" action="/staff/content/${esc(topicId)}/${lang}" class="card">${csrfField(req)}${versionFields(start)}
 <p class="row"><button class="accent" name="step" value="save">Save draft</button><button class="secondary" name="step" value="submit">Save and send for review</button></p></form>`,
         nav(req),
@@ -232,6 +242,23 @@ ${select("Category", "category", Object.entries(CATEGORIES), t.category, { requi
     );
   };
   r.get("/content/:topic/:lang/edit", writers, (req, res) => editPage(req, res));
+
+  // AI first draft of a translation, shown in the form for the translator to check (never saved here).
+  r.post("/content/:topic/:lang/ai-draft", writers, async (req, res) => {
+    const topicId = String(req.params.topic);
+    const lang = String(req.params.lang);
+    if (lang === "en" || !LANGS.includes(lang)) return res.status(404).send("Not found");
+    const [enRef] = await db.query(
+      `SELECT title, body, keywords, sources FROM content_versions WHERE topic_id = $1 AND language = 'en' AND status IN ('published','approved','in_review','draft') ORDER BY (status='published') DESC, version DESC LIMIT 1`,
+      [topicId],
+    );
+    if (!enRef) return editPage(req, res, "There is no English text to translate yet.");
+    const d = await draftContent(lang, { title: enRef.title, body: enRef.body, keywords: enRef.keywords });
+    await auditReq(db, req, { action: "content.ai_draft", targetType: "content", targetId: topicId, details: { lang, ok: d.ok } });
+    if (!d.ok) return editPage(req, res, draftProblem(d.reason));
+    const sources = [`${AI_DRAFT_NOTE} (${d.model})`, enRef.sources].filter(Boolean).join(" · ").slice(0, 500);
+    return editPage(req, res, "", { ...d.value, sources });
+  });
 
   r.post("/content/:topic/:lang", writers, async (req, res) => {
     const topicId = String(req.params.topic);
@@ -376,6 +403,9 @@ ${v.audio_media_id ? `<audio controls preload="none" src="/staff/media/${v.audio
 
   return r;
 }
+
+const briefCard = (brief: string | undefined) =>
+  brief ? `<div class="card"><div class="eyebrow">Brief for the writer · never sent to girls</div><p style="white-space:pre-wrap">${esc(brief)}</p></div>` : "";
 
 function versionFields(v: any) {
   return `${field("Title", "title", v.title ?? "", { required: true })}${textarea("Answer (what Ubah sends)", "body", v.body ?? "", { rows: 6, required: true, hint: "At most about 3 short sentences per paragraph. No medicines or doses unless the guidance names them." })}

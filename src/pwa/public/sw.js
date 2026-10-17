@@ -1,7 +1,7 @@
 /* Ubah service worker: the app opens offline, and lessons (text and audio) can be read offline.
  * Personal data (messages, passes, account) is NEVER cached: those requests always go to the network. */
 "use strict";
-const VERSION = "ubah-app-v1";
+const VERSION = "ubah-app-v2";
 const SHELL = ["/app/", "/app/app.css", "/app/app.js", "/app/manifest.webmanifest", "/app/icon.svg", "/app/icon-192.png"];
 const PUBLIC_API = ["/app/api/strings", "/app/api/learn", "/app/api/audio/"];
 

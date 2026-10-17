@@ -31,6 +31,8 @@ export function reloadModels() {
 const DANGER_RULES: Array<{ label: "medical" | "safety" | "selfharm"; re: RegExp }> = [
   { label: "selfharm", re: /\b(kill (my ?self|me)|want(ed)? to die|end (my|it all|my life)|suicid|hurt (my ?self)|cut (my ?self)|don'?t want to live|not want to live|wish i (was|were) dead)\b/i },
   { label: "safety", re: /\b(rap(e|ed)|forc(e|ed|es) me|beat(s|ing)? me|hit(s)? me|abus(e|ed|ing)|assault(ed)?|not safe|threaten(s|ed)? me|touch(es|ed)? me|marry me off|cut me)\b/i },
+  // A girl at risk of FGM ("they will circumcise me") is a protection emergency, like "cut me" above.
+  { label: "safety", re: /\b(circumcis(e|ed|ing) me|(going to|want(s)? to|will|plan(s|ning)? to) circumcise)\b/i },
   { label: "medical", re: /\b(bleeding (a lot|heavily|won'?t stop|will not stop)|soak(s|ing)? a pad every hour|faint(ed)?|baby (is )?not moving|water broke|fits|convulsion|can'?t breathe|unconscious)\b/i },
   { label: "medical", re: /\bpregnant\b.*\b(bleed|bleeding|headache|fever|pain)\b|\b(bleed|bleeding)\b.*\bpregnant\b/i },
 ];

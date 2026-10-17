@@ -3,7 +3,7 @@
  * is set); the conversation lives on the server, never stored on the phone. Quick exit on every screen. */
 "use strict";
 
-const KEY = { token: "ubah.t", lockedToken: "ubah.tenc", lang: "ubah.lang" };
+const KEY = { token: "ubah.t", lockedToken: "ubah.tenc", lang: "ubah.lang", intro: "ubah.intro" };
 const S = { token: null, lang: null, strings: {}, languages: {}, msgs: [], lastId: 0, outbox: [], services: new Set(), recording: null, poll: null };
 
 // ---------- small helpers ----------
@@ -48,6 +48,35 @@ function h(tag, attrs, ...kids) {
   }
   for (const kid of kids.flat(Infinity)) if (kid != null && kid !== false) el.append(kid instanceof Node ? kid : document.createTextNode(String(kid)));
   return el;
+}
+
+// Simple line icons (24x24, drawn with the text colour). Decorative: the label next to them carries the meaning.
+const ICONS = {
+  home: "M3 11l9-8 9 8M5 9.5V20h5v-6h4v6h5V9.5",
+  ask: "M4 5h16v11H9l-5 4z",
+  care: "M5 4h14v16H5zM12 8v8M8 12h8",
+  pass: "M3 7h18v3.5a1.5 1.5 0 0 0 0 3V17H3v-3.5a1.5 1.5 0 0 0 0-3zM15 7v10",
+  learn: "M4 5.5C6 4 9 4 12 6c3-2 6-2 8-.5V19c-2-1.5-5-1.5-8 .5-3-2-6-2-8-.5zM12 6v13.5",
+  settings: "M4 7h9M17 7h3M4 17h3M11 17h9M15 5v4M9 15v4",
+  lock: "M6 11h12v9H6zM8.5 11V8a3.5 3.5 0 0 1 7 0v3",
+  person: "M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM4.5 21a7.5 7.5 0 0 1 15 0",
+  mic: "M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3zM5.5 11.5a6.5 6.5 0 0 0 13 0M12 18v3",
+  send: "M4 12l16-8-6 16-2.5-6.5z",
+  stop: "M7 7h10v10H7z",
+  exit: "M10 4H5v16h5M14 8l4 4-4 4M18 12H9",
+  check: "M5 12.5l4.5 4.5L19 7",
+  arrow: "M9 5l7 7-7 7",
+};
+function icon(name) {
+  const ns = "http://www.w3.org/2000/svg";
+  const svg = document.createElementNS(ns, "svg");
+  svg.setAttribute("viewBox", "0 0 24 24");
+  svg.setAttribute("aria-hidden", "true");
+  svg.setAttribute("class", "icon");
+  const p = document.createElementNS(ns, "path");
+  p.setAttribute("d", ICONS[name]);
+  svg.append(p);
+  return svg;
 }
 
 async function api(path, opts = {}) {
@@ -114,6 +143,13 @@ async function loadStrings(lang) {
   document.documentElement.lang = r.lang;
 }
 
+async function setLanguage(code) {
+  await api("/me", { method: "PATCH", json: { language: code } });
+  S.lang = code;
+  store.set(KEY.lang, code);
+  await loadStrings(code);
+}
+
 // ---------- quick exit ----------
 function quickExit() {
   S.token = null;
@@ -124,22 +160,22 @@ function quickExit() {
 }
 
 // ---------- layout ----------
-const VIEWS = ["home", "ask", "care", "passes", "learn", "account"];
+const VIEWS = ["home", "ask", "care", "passes", "learn", "account", "intro"];
 const route = () => (VIEWS.includes(location.hash.slice(2)) ? location.hash.slice(2) : "home");
 const go = (v) => {
   location.hash = `#/${v}`;
 };
 
-function header(locked) {
+function header(opts = {}) {
   return h(
     "header",
     null,
-    h("div", { class: "brand" }, "ubah"),
+    h("div", { class: "brand" }, h("span", { class: "dot", "aria-hidden": "true" }), "ubah"),
     h(
       "div",
-      { style: "display:flex;gap:8px" },
-      locked ? null : h("button", { class: "secondary exit", onclick: () => go("account") }, tr("app_nav_account")),
-      h("button", { class: "exit", onclick: quickExit, "aria-label": tr("app_quick_exit") }, tr("app_quick_exit")),
+      { class: "header-actions" },
+      opts.locked || opts.bare ? null : h("button", { class: "iconbtn", onclick: () => go("account"), "aria-label": tr("app_nav_account"), "aria-current": opts.view === "account" ? "page" : null }, icon("settings")),
+      h("button", { class: "exit", onclick: quickExit }, icon("exit"), tr("app_quick_exit")),
     ),
   );
 }
@@ -152,60 +188,109 @@ function tabs(current) {
     ["passes", "app_nav_passes"],
     ["learn", "app_nav_learn"],
   ];
-  return h("nav", { class: "tabs", "aria-label": "Ubah" }, items.map(([v, k]) => h("button", { onclick: () => go(v), "aria-current": current === v ? "page" : null }, tr(k))));
+  return h("nav", { class: "tabs", "aria-label": "Ubah" }, items.map(([v, k]) => h("button", { onclick: () => go(v), "aria-current": current === v ? "page" : null }, icon(v), h("span", null, tr(k)))));
+}
+
+function banners(root) {
+  if (S.staging) root.append(h("div", { class: "banner", role: "status" }, "TEST VERSION — not for real health questions."));
+  if (!navigator.onLine) root.append(h("div", { class: "banner", role: "status" }, tr("app_offline")));
 }
 
 function mount(view, ...content) {
   const root = document.getElementById("app");
   root.textContent = "";
-  if (S.staging) root.append(h("div", { class: "offline", role: "status" }, "TEST VERSION — not for real health questions."));
-  if (!navigator.onLine) root.append(h("div", { class: "offline", role: "status" }, tr("app_offline")));
-  root.append(header(), h("section", { class: "view" }, content), tabs(view));
+  banners(root);
+  root.append(header({ view }), h("section", { class: `view view-${view}` }, content), tabs(view));
 }
 
-// ---------- screens ----------
-function viewLanguage() {
+// A full-screen step without the bottom bar (language, intro, PIN).
+function mountBare(...content) {
   const root = document.getElementById("app");
   root.textContent = "";
-  root.append(
-    header(),
+  banners(root);
+  root.append(header({ bare: true }), h("section", { class: "view bare" }, content));
+}
+
+const title = (text, sub) => h("div", { class: "title" }, h("h1", null, text), sub ? h("p", { class: "muted" }, sub) : null);
+
+// ---------- first visit: language, then how Ubah works ----------
+function viewLanguage() {
+  mountBare(
+    h("div", { class: "flower", "aria-hidden": "true" }),
+    h("h1", { class: "center" }, tr("app_choose_language")),
     h(
-      "section",
-      { class: "view" },
-      h("h1", null, tr("app_choose_language")),
+      "div",
+      { class: "stack" },
       Object.entries(S.languages).map(([code, name]) =>
         h(
           "button",
           {
-            class: "tile",
+            class: "choice",
+            lang: code,
             onclick: async () => {
-              await api("/me", { method: "PATCH", json: { language: code } });
-              S.lang = code;
-              store.set(KEY.lang, code);
-              await loadStrings(code);
-              go("home");
+              await setLanguage(code);
+              go(store.get(KEY.intro) ? "home" : "intro");
               render();
             },
           },
           h("b", null, name),
+          icon("arrow"),
         ),
       ),
     ),
   );
 }
 
-function viewHome() {
-  mount(
-    "home",
-    h("h1", null, h("em", null, "Salaan."), " ", tr("app_greeting")),
-    h("p", { class: "muted" }, tr("app_tagline")),
-    h("button", { class: "tile accent", onclick: () => go("ask") }, h("b", null, tr("app_home_ask")), h("span", null, tr("app_home_ask_sub"))),
-    h("button", { class: "tile", onclick: () => go("care") }, h("b", null, tr("app_home_care")), h("span", { class: "muted" }, tr("app_home_care_sub"))),
-    h("button", { class: "tile", onclick: () => go("learn") }, h("b", null, tr("app_home_learn")), h("span", { class: "muted" }, tr("app_home_learn_sub"))),
-    h("p", { class: "note" }, tr("app_privacy")),
+function viewIntro() {
+  const point = (ic, t, body) => h("div", { class: "point" }, h("span", { class: "point-icon" }, icon(ic)), h("div", null, h("h2", null, t), h("p", null, body)));
+  mountBare(
+    h("h1", null, tr("app_intro_title")),
+    point("lock", tr("app_intro_private_t"), tr("app_intro_private")),
+    point("ask", tr("app_intro_ask_t"), tr("app_intro_ask")),
+    point("pass", tr("app_intro_care_t"), tr("app_intro_care")),
+    h(
+      "button",
+      {
+        class: "accent wide",
+        onclick: () => {
+          store.set(KEY.intro, "1");
+          go("home");
+        },
+      },
+      tr("app_intro_start"),
+    ),
   );
 }
 
+// ---------- home ----------
+async function viewHome() {
+  let pass = null;
+  try {
+    pass = (await api("/passes")).passes.find((p) => p.valid) || null;
+  } catch {
+    /* offline: home still works */
+  }
+  mount(
+    "home",
+    title(`${tr("app_hello")} ${tr("app_greeting")}`, tr("app_tagline")),
+    h("button", { class: "tile hero", onclick: () => go("ask") }, h("span", { class: "tile-icon" }, icon("ask")), h("span", { class: "tile-text" }, h("b", null, tr("app_home_ask")), h("span", null, tr("app_home_ask_sub")))),
+    h(
+      "div",
+      { class: "pair" },
+      h("button", { class: "tile", onclick: () => go("care") }, h("span", { class: "tile-icon" }, icon("care")), h("b", null, tr("app_home_care")), h("span", { class: "muted" }, tr("app_home_care_sub"))),
+      h("button", { class: "tile", onclick: () => go("learn") }, h("span", { class: "tile-icon" }, icon("learn")), h("b", null, tr("app_home_learn")), h("span", { class: "muted" }, tr("app_home_learn_sub"))),
+    ),
+    pass
+      ? h("button", { class: "mini-pass", onclick: () => go("passes") }, h("span", { class: "muted" }, tr("app_your_pass")), h("span", { class: "code" }, pass.code), h("span", null, tr("app_pass_show")))
+      : null,
+    h("button", { class: "row", onclick: () => talkToPerson() }, h("span", { class: "row-icon" }, icon("person")), h("span", { class: "row-text" }, h("b", null, tr("app_talk_person")), h("span", { class: "muted" }, tr("app_talk_person_sub"))), icon("arrow")),
+    hasPin()
+      ? h("p", { class: "note" }, icon("lock"), h("span", null, tr("app_pin_on")))
+      : h("button", { class: "note", onclick: () => go("account") }, icon("lock"), h("span", null, tr("app_privacy"))),
+  );
+}
+
+// ---------- ask ----------
 async function refreshMessages() {
   const r = await api(`/messages?after=${S.lastId}`);
   addMessages(r.messages);
@@ -220,6 +305,7 @@ function addMessages(list) {
 }
 
 async function sendText(text) {
+  if (route() !== "ask") go("ask");
   if (!navigator.onLine) {
     S.outbox.push(text); // kept in memory only, sent when back online
     S.msgs.push({ id: 0, from: "me", text, pending: true });
@@ -237,6 +323,9 @@ async function sendText(text) {
   }
   if (route() === "ask") viewAsk();
 }
+
+// "DADA" is the command every channel understands, in every language.
+const talkToPerson = () => sendText("DADA");
 
 async function toggleRecording() {
   if (S.recording) return S.recording.stop();
@@ -274,13 +363,31 @@ async function toggleRecording() {
 }
 
 function viewAsk() {
+  const shown = S.msgs.filter((m) => m.text);
   const last = [...S.msgs].reverse().find((m) => m.from === "ubah");
+  const empty = h(
+    "div",
+    { class: "empty" },
+    h("h2", null, tr("app_ask_empty_t")),
+    h("p", { class: "muted" }, tr("app_ask_empty")),
+    h("p", { class: "label" }, tr("app_ask_examples")),
+    h("div", { class: "stack" }, ["app_ex_1", "app_ex_2", "app_ex_3", "app_ex_4"].map((k) => h("button", { class: "suggest", onclick: () => sendText(tr(k)) }, tr(k)))),
+  );
   const thread = h(
     "div",
     { class: "thread" },
-    S.msgs.filter((m) => m.text).map((m) => h("div", { class: `msg ${m.from === "me" ? "me" : "ubah"}` }, m.kind === "voice" ? "🎙 " : "", m.text, m.pending ? " …" : "")),
+    shown.map((m) =>
+      h(
+        "div",
+        { class: `msg ${m.from === "me" ? "me" : "ubah"}` },
+        m.from === "me" ? null : h("span", { class: "who" }, "Ubah"),
+        m.kind === "voice" ? "🎙 " : "",
+        m.text,
+        m.pending ? " …" : "",
+      ),
+    ),
     last && last.options && last.options.length && last === S.msgs[S.msgs.length - 1]
-      ? h("div", { class: "options" }, last.options.map((o) => h("button", { class: "secondary", onclick: () => sendText(o.id) }, o.title)))
+      ? h("div", { class: "options" }, last.options.map((o) => h("button", { class: "suggest", onclick: () => sendText(o.id) }, o.title)))
       : null,
   );
   const input = h("input", { id: "q", placeholder: tr("app_type_question"), autocomplete: "off", "aria-label": tr("app_type_question"), maxlength: 1600 });
@@ -295,13 +402,19 @@ function viewAsk() {
       },
     },
     input,
-    h("button", { type: "submit", class: "accent round", "aria-label": tr("app_send") }, "➤"),
-    h("button", { type: "button", class: `${S.recording ? "accent" : "secondary"} round`, "aria-label": S.recording ? tr("app_stop_recording") : tr("app_record"), onclick: toggleRecording }, S.recording ? "■" : "🎙"),
+    h("button", { type: "submit", class: "accent round", "aria-label": tr("app_send") }, icon("send")),
+    h("button", { type: "button", class: `${S.recording ? "accent recording" : "secondary"} round`, "aria-label": S.recording ? tr("app_stop_recording") : tr("app_record"), onclick: toggleRecording }, icon(S.recording ? "stop" : "mic")),
   );
-  mount("ask", h("h1", null, h("em", null, tr("app_nav_ask")), " Ubah"), thread, form);
+  mount(
+    "ask",
+    h("div", { class: "ask-head" }, h("h1", null, tr("app_nav_ask")), h("button", { class: "pill", onclick: () => talkToPerson() }, icon("person"), tr("app_talk_person"))),
+    shown.length ? thread : empty,
+    form,
+  );
   window.scrollTo(0, document.body.scrollHeight);
 }
 
+// ---------- care: pick what she needs, see clinics, get one pass ----------
 async function viewCare() {
   const services = [...S.services];
   const r = await api(`/clinics?services=${encodeURIComponent(services.join(","))}`);
@@ -310,57 +423,67 @@ async function viewCare() {
     else S.services.add(s);
     viewCare();
   };
-  const clinic = (c, i) =>
+  const step = (n, text) => h("h2", { class: "step" }, h("span", { class: "num" }, n), text);
+  const clinic = (c) =>
     h(
       "div",
-      { class: "card" },
-      h("div", { style: "display:flex;justify-content:space-between;gap:8px" }, h("h2", null, c.name), c.verified ? h("span", { class: "tag" }, tr("app_verified")) : null),
+      { class: "card clinic" },
+      h("div", { class: "clinic-top" }, h("h3", null, c.name), c.verified ? h("span", { class: "tag" }, icon("check"), tr("app_verified")) : null),
       h("div", { class: "muted" }, [c.area, c.site, c.hours].filter(Boolean).join(" · ")),
-      h("div", { class: "muted" }, c.services.map((s) => tr(`svc_${s}`)).join(", ")),
-      h("div", { class: "muted" }, c.rating ? tr("app_rating", { yes: c.rating.respectful, total: c.rating.total }) : tr("app_no_rating")),
-      i === 0
-        ? h(
-            "button",
-            {
-              class: "accent",
-              disabled: !services.length,
-              onclick: async () => {
-                const p = await api("/passes", { method: "POST", json: { services } });
-                await refreshMessages();
-                go(p.code ? "passes" : "ask");
-              },
-            },
-            services.length ? tr("app_get_pass") : tr("app_pick_first"),
-          )
-        : null,
+      h("div", { class: "svc" }, c.services.map((s) => h("span", { class: S.services.has(s) ? "svc-on" : null }, tr(`svc_${s}`)))),
+      h("div", { class: "muted small" }, c.rating ? tr("app_rating", { yes: c.rating.respectful, total: c.rating.total }) : tr("app_no_rating")),
     );
   mount(
     "care",
-    h("h1", null, h("em", null, tr("app_nav_care"))),
-    h("p", { class: "muted" }, tr("app_care_pick")),
-    h("div", { class: "chips", role: "group" }, r.services.map((s) => h("button", { class: "chip", "aria-pressed": S.services.has(s) ? "true" : "false", onclick: () => toggle(s) }, tr(`svc_${s}`)))),
+    title(tr("app_nav_care"), tr("app_home_care_sub")),
+    step("1", tr("app_care_step1")),
+    h("div", { class: "chips", role: "group", "aria-label": tr("app_care_step1") }, r.services.map((s) => h("button", { class: "chip", "aria-pressed": S.services.has(s) ? "true" : "false", onclick: () => toggle(s) }, S.services.has(s) ? icon("check") : null, tr(`svc_${s}`)))),
+    step("2", services.length ? tr("app_care_step2") : tr("app_care_all")),
     r.clinics.length ? r.clinics.map(clinic) : h("p", { class: "note" }, tr("app_no_clinics")),
+    // Step 3 stays in view above the bottom bar, however long the clinic list is.
+    h(
+      "div",
+      { class: "passbar" },
+      step("3", tr("app_care_step3")),
+      h("p", { class: "muted small" }, tr("app_care_pass_note")),
+      h(
+        "button",
+        {
+          class: "accent wide",
+          disabled: !services.length,
+          onclick: async () => {
+            const p = await api("/passes", { method: "POST", json: { services } });
+            await refreshMessages();
+            S.services.clear();
+            go(p.code ? "passes" : "ask");
+          },
+        },
+        services.length ? tr("app_get_pass") : tr("app_pick_first"),
+      ),
+    ),
   );
 }
 
 async function viewPasses() {
   const r = await api("/passes");
+  const status = (p) => (p.valid ? h("span", { class: "tag" }, tr("app_pass_ready")) : p.redeemed ? h("span", { class: "tag grey" }, tr("app_pass_used")) : h("span", { class: "tag grey" }, tr("app_pass_expired")));
   mount(
     "passes",
-    h("h1", null, h("em", null, tr("app_nav_passes"))),
+    title(tr("app_nav_passes"), tr("app_passes_intro")),
     r.passes.length
       ? r.passes.map((p) =>
           h(
             "div",
-            { class: p.valid ? "pass" : "card" },
-            h("span", { class: "muted" }, p.valid ? tr("app_pass_show") : p.redeemed ? tr("app_pass_used") : ""),
+            { class: p.valid ? "pass" : "card pass-old" },
+            status(p),
             h("span", { class: "code" }, p.code),
+            p.valid ? h("span", null, tr("app_pass_show")) : null,
             h("span", null, [p.clinic, p.area].filter(Boolean).join(", ")),
             h("span", { class: "muted" }, p.services.map((s) => tr(`svc_${s}`)).join(", ")),
-            h("span", { class: "muted" }, tr("app_pass_valid", { date: new Date(p.expiresAt).toLocaleDateString() })),
+            p.valid ? h("span", { class: "muted" }, tr("app_pass_valid", { date: new Date(p.expiresAt).toLocaleDateString() })) : null,
           ),
         )
-      : h("p", { class: "note" }, tr("app_passes_empty")),
+      : h("div", { class: "empty" }, h("p", null, tr("app_passes_empty")), h("button", { class: "accent", onclick: () => go("care") }, tr("app_pass_get"))),
   );
 }
 
@@ -371,26 +494,44 @@ async function viewLearn() {
   } catch {
     r = { lessons: [] };
   }
+  const groups = new Map();
+  for (const l of r.lessons) groups.set(l.category, [...(groups.get(l.category) || []), l]);
   mount(
     "learn",
-    h("h1", null, h("em", null, tr("app_nav_learn"))),
+    title(tr("app_nav_learn"), tr("app_learn_intro")),
     r.lessons.length
-      ? r.lessons.map((l) =>
+      ? [...groups].map(([cat, lessons]) =>
           h(
-            "article",
-            { class: "card" },
-            h("div", { class: "muted" }, tr(`cat_${l.category}`)),
-            h("h2", null, l.title),
-            h("p", { style: "margin:0;white-space:pre-wrap" }, l.body),
-            l.translated ? null : h("p", { class: "muted" }, tr("translation_pending")),
-            l.audio ? h("audio", { controls: true, preload: "none", src: l.audio }) : null,
+            "div",
+            { class: "group" },
+            h("h2", { class: "label" }, tr(`cat_${cat}`)),
+            lessons.map((l) =>
+              h(
+                "details",
+                { class: "lesson" },
+                h("summary", null, h("span", null, l.title), l.translated ? null : h("span", { class: "tag grey", lang: "en" }, S.languages.en || "English"), icon("arrow")),
+                // Not yet translated and approved in her language: she still gets the English, clearly marked.
+                l.translated ? null : h("p", { class: "pending" }, tr("translation_pending")),
+                h("p", { class: "body", lang: l.translated ? null : "en" }, l.body),
+                l.audio ? h("audio", { controls: true, preload: "none", src: l.audio }) : null,
+              ),
+            ),
           ),
         )
       : h("p", { class: "note" }, tr("app_learn_empty")),
+    (r.upcoming || []).map((cat) =>
+      h(
+        "div",
+        { class: "group" },
+        h("h2", { class: "label" }, tr(`cat_${cat}`)),
+        h("div", { class: "card soon" }, h("span", { class: "tag grey" }, tr("app_learn_soon_t")), h("p", { class: "muted" }, tr("app_learn_soon")), h("button", { class: "secondary", onclick: () => talkToPerson() }, icon("person"), tr("app_talk_person"))),
+      ),
+    ),
   );
 }
 
-function pinPad(title, onDone, error) {
+// ---------- PIN ----------
+function pinPad(heading, onDone, error) {
   let entry = "";
   const dots = h("div", { class: "dots", "aria-label": `0/6` });
   const paint = () => {
@@ -404,9 +545,10 @@ function pinPad(title, onDone, error) {
   paint();
   const keys = ["1", "2", "3", "4", "5", "6", "7", "8", "9"].map((d) => h("button", { onclick: () => press(d) }, d));
   return h(
-    "section",
-    { class: "view", style: "align-items:center;justify-content:center" },
-    h("h1", null, title),
+    "div",
+    { class: "pin" },
+    h("span", { class: "point-icon" }, icon("lock")),
+    h("h1", { class: "center" }, heading),
     dots,
     error ? h("p", { class: "tag warn", role: "alert" }, error) : null,
     h(
@@ -415,7 +557,7 @@ function pinPad(title, onDone, error) {
       keys,
       h("button", { onclick: () => ((entry = entry.slice(0, -1)), paint()), "aria-label": "Delete" }, "⌫"),
       h("button", { onclick: () => press("0") }, "0"),
-      h("button", { class: "accent", onclick: () => entry.length >= 4 && onDone(entry), "aria-label": "OK" }, "✓"),
+      h("button", { class: "accent", onclick: () => entry.length >= 4 && onDone(entry), "aria-label": "OK" }, icon("check")),
     ),
   );
 }
@@ -424,65 +566,116 @@ function viewLock(error) {
   const root = document.getElementById("app");
   root.textContent = "";
   root.append(
-    header(true),
-    pinPad(tr("app_pin_enter"), async (pin) => {
-      try {
-        S.token = await unlockToken(pin);
-        start();
-      } catch {
-        viewLock(tr("app_pin_wrong"));
-      }
-    }, error),
+    header({ locked: true }),
+    h(
+      "section",
+      { class: "view bare" },
+      pinPad(
+        tr("app_pin_enter"),
+        async (pin) => {
+          try {
+            S.token = await unlockToken(pin);
+            start();
+          } catch {
+            viewLock(tr("app_pin_wrong"));
+          }
+        },
+        error,
+      ),
+    ),
   );
 }
 
+// ---------- settings ----------
 function viewAccount(message) {
+  const section = (heading, ...kids) => h("div", { class: "card" }, h("h2", null, heading), kids);
   mount(
     "account",
-    h("h1", null, h("em", null, tr("app_nav_account"))),
-    message ? h("p", { class: "tag", role: "status" }, message) : null,
-    h("div", { class: "card" }, h("h2", null, tr("app_language")), h("div", { class: "chips" }, Object.entries(S.languages).map(([code, name]) =>
-      h("button", { class: "chip", "aria-pressed": S.lang === code ? "true" : "false", onclick: async () => {
-        await api("/me", { method: "PATCH", json: { language: code } });
-        S.lang = code;
-        store.set(KEY.lang, code);
-        await loadStrings(code);
-        viewAccount(tr("app_saved"));
-      } }, name)))),
+    title(tr("app_nav_account")),
+    message ? h("p", { class: "tag", role: "status" }, icon("check"), message) : null,
+    section(
+      tr("app_language"),
+      h(
+        "div",
+        { class: "chips" },
+        Object.entries(S.languages).map(([code, name]) =>
+          h(
+            "button",
+            {
+              class: "chip",
+              lang: code,
+              "aria-pressed": S.lang === code ? "true" : "false",
+              onclick: async () => {
+                await setLanguage(code);
+                viewAccount(tr("app_saved"));
+              },
+            },
+            name,
+          ),
+        ),
+      ),
+    ),
+    section(
+      tr("app_privacy_t"),
+      h("p", { class: "muted" }, hasPin() ? tr("app_pin_on") : tr("app_pin_explain")),
+      hasPin()
+        ? h(
+            "button",
+            {
+              class: "secondary",
+              onclick: () => {
+                store.set(KEY.token, S.token);
+                store.del(KEY.lockedToken);
+                viewAccount(tr("app_saved"));
+              },
+            },
+            tr("app_pin_remove"),
+          )
+        : h("button", { class: "accent", onclick: () => mountBare(pinPad(tr("app_pin_new"), async (pin) => {
+              await lockToken(pin);
+              go("account");
+              viewAccount(tr("app_saved"));
+            })) }, icon("lock"), tr("app_lock_now")),
+    ),
+    h("button", { class: "row", onclick: () => go("intro") }, h("span", { class: "row-icon" }, icon("learn")), h("span", { class: "row-text" }, h("b", null, tr("app_intro_title"))), icon("arrow")),
     h(
       "div",
-      { class: "card" },
-      hasPin()
-        ? h("button", { class: "secondary", onclick: () => {
-            store.set(KEY.token, S.token);
-            store.del(KEY.lockedToken);
-            viewAccount(tr("app_saved"));
-          } }, tr("app_pin_remove"))
-        : h("button", { class: "secondary", onclick: () => {
-            const root = document.getElementById("app");
-            root.textContent = "";
-            root.append(header(), pinPad(tr("app_pin_new"), async (pin) => {
-              await lockToken(pin);
-              viewAccount(tr("app_saved"));
-            }));
-          } }, tr("app_pin_set")),
-      h("button", { class: "secondary", onclick: () => {
-        const root = document.getElementById("app");
-        root.textContent = "";
-        root.append(header(), h("section", { class: "view" }, h("p", { class: "note" }, tr("app_wipe_confirm")),
-          h("button", { class: "accent", onclick: async () => {
-            await api("/me", { method: "DELETE" });
-            S.token = null;
-            S.msgs = [];
-            S.lastId = 0;
-            store.del(KEY.token);
-            store.del(KEY.lockedToken);
-            await ensureSession();
-            go("home");
-            render();
-          } }, tr("app_wipe_yes")),
-          h("button", { class: "secondary", onclick: () => viewAccount() }, tr("app_cancel"))));
-      } }, tr("app_wipe")),
+      { class: "card danger" },
+      h("h2", null, tr("app_wipe")),
+      h("p", { class: "muted" }, tr("app_wipe_explain")),
+      h(
+        "button",
+        {
+          class: "secondary danger-btn",
+          onclick: () =>
+            mountBare(
+              h("h1", null, tr("app_wipe")),
+              h("p", { class: "note" }, tr("app_wipe_confirm")),
+              h(
+                "button",
+                {
+                  class: "accent wide",
+                  onclick: async () => {
+                    await api("/me", { method: "DELETE" });
+                    S.token = null;
+                    S.msgs = [];
+                    S.lastId = 0;
+                    S.lang = null;
+                    store.del(KEY.token);
+                    store.del(KEY.lockedToken);
+                    store.del(KEY.intro);
+                    await ensureSession();
+                    go("home");
+                    render();
+                  },
+                },
+                tr("app_wipe_yes"),
+              ),
+              h("button", { class: "secondary wide", onclick: () => viewAccount() }, tr("app_cancel")),
+            ),
+        },
+        tr("app_wipe"),
+      ),
     ),
   );
 }
@@ -502,11 +695,12 @@ async function render() {
         await refreshMessages().catch(() => {});
         if (S.lastId !== before && route() === "ask" && !S.recording) viewAsk();
       }, 10000);
-    } else if (v === "care") await viewCare();
+    } else if (v === "intro") viewIntro();
+    else if (v === "care") await viewCare();
     else if (v === "passes") await viewPasses();
     else if (v === "learn") await viewLearn();
     else if (v === "account") viewAccount();
-    else viewHome();
+    else await viewHome();
   } catch {
     mount(v, h("p", { class: "note" }, navigator.onLine ? tr("app_error") : tr("app_offline")));
   }
