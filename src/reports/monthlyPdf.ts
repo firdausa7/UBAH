@@ -4,9 +4,9 @@ import { showCount, showPct, sup, type DashboardStats } from "../stats.js";
 // Monthly report for donors and partners, as a real PDF. Same numbers and the same
 // privacy rule as the dashboard (counts of 1 to 4 shown as "<5").
 
-const INK = "#151D2C";
-const MUTED = "#5B6575";
-const LINE = "#ECE8E3";
+const INK = "#2E1F3E";
+const MUTED = "#5B5066";
+const LINE = "#ECE2F5";
 
 export function monthlyReportPdf(st: DashboardStats, meta: { title: string; period: string; scope: string; generatedBy: string }): Promise<Buffer> {
   return new Promise((resolve, reject) => {
@@ -17,7 +17,7 @@ export function monthlyReportPdf(st: DashboardStats, meta: { title: string; peri
     doc.on("error", reject);
     const W = doc.page.width - 100;
 
-    doc.fillColor("#C8462B").font("Helvetica-Bold").fontSize(14).text("ubah");
+    doc.fillColor("#6C4ACF").font("Helvetica-Bold").fontSize(14).text("ubah");
     doc.moveDown(0.3).fillColor(INK).font("Helvetica").fontSize(22).text(meta.title);
     doc.fillColor(MUTED).fontSize(10).text(`${meta.period} · ${meta.scope}`);
     doc.text(`All figures are anonymous. Counts of 1 to 4 are shown as "<5" and percentages need at least 5 answers, so no girl can be identified.`, { width: W });

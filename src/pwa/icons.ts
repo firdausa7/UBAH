@@ -1,7 +1,7 @@
 import { deflateSync } from "node:zlib";
 
 // The app's PNG icons (Android needs PNGs to install a web app), drawn here so no image tool is
-// needed: Ubah's coral square with a white "u". Made once at startup, then cached in memory.
+// needed: Ubah's purple square with a white "u". Made once at startup, then cached in memory.
 
 function crc32(buf: Buffer): number {
   let c = ~0;
@@ -48,9 +48,9 @@ export function iconPng(size: number): Buffer {
       const a = u / (ss * ss);
       const o = py * (size * 4 + 1) + 1 + px * 4;
       // Full-bleed background (Android masks it to its own shape).
-      raw[o] = Math.round(0xc8 * (1 - a) + 255 * a);
-      raw[o + 1] = Math.round(0x46 * (1 - a) + 255 * a);
-      raw[o + 2] = Math.round(0x2b * (1 - a) + 255 * a);
+      raw[o] = Math.round(0x6c * (1 - a) + 255 * a);
+      raw[o + 1] = Math.round(0x4a * (1 - a) + 255 * a);
+      raw[o + 2] = Math.round(0xcf * (1 - a) + 255 * a);
       raw[o + 3] = 255;
     }
   }

@@ -1,7 +1,7 @@
 import { config } from "../config.js";
 // Minimal server-rendered pages: fast on slow connections and cheap phones.
 // Visual language: DM Sans, an italic-semibold word inside plain headings, small eyebrow labels,
-// soft cards with thin borders, pill buttons, navy ink with Ubah's coral accent.
+// soft cards with thin borders, pill buttons, plum ink with Ubah's lavender and purple accent, matching the landing page.
 
 export function esc(v: unknown): string {
   return String(v ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
@@ -13,13 +13,14 @@ export function h1(em: string, rest: string, eyebrow = ""): string {
 }
 
 const CSS = `
-:root{--ink:#151D2C;--text:#2F3F52;--muted:#5B6575;--line:#ECE8E3;--line2:#C4C5E0;--bg:#F7F6F4;--card:#fff;--soft:#F3F0EE;
---accent:#C8462B;--accent-ink:#fff;--accent-soft:#FBE9E3;--ok:#1E5B3A;--okbg:#E2F1E8;--warn:#9A3412;--warnbg:#FBE9E3}
+:root{--ink:#2E1F3E;--text:#4A3F55;--muted:#5B5066;--line:#ECE2F5;--line2:#D8CAF3;--bg:#FFF8F3;--card:#fff;--soft:#F5EEF9;
+--accent:#6C4ACF;--accent-ink:#fff;--accent-soft:#E6DBFA;--ok:#3B2370;--okbg:#E6DBFA;--warn:#8E1340;--warnbg:#F7C6D0;
+--pink:#FBE1E7;--pinkink:#6B2A55}
 *{box-sizing:border-box}
 body{margin:0;font:16px/1.5 "DM Sans",system-ui,-apple-system,"Segoe UI",sans-serif;color:var(--text);background:var(--bg);-webkit-font-smoothing:antialiased}
 a{color:var(--ink);text-underline-offset:3px}
 header.top{background:#fff;border-bottom:1px solid var(--line);padding:14px 20px;display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:space-between}
-header.top .brand{font-weight:700;font-size:22px;color:var(--ink);letter-spacing:-.5px;text-decoration:none}
+header.top .brand{font-weight:700;font-size:22px;color:var(--accent);letter-spacing:-.5px;text-decoration:none}
 header.top nav{display:flex;flex-wrap:wrap;gap:6px 18px;align-items:center;font-size:15px}
 header.top nav a{text-decoration:none;color:var(--muted)}header.top nav a:hover{color:var(--ink)}
 main{max-width:1120px;margin:0 auto;padding:32px 20px 56px}
@@ -37,7 +38,7 @@ h2{font-weight:400;font-size:21px;color:var(--ink);margin:0 0 10px}
 button,.btn{min-height:44px;padding:0 22px;border-radius:999px;border:1px solid var(--ink);background:var(--ink);color:#fff;font:inherit;font-size:15px;font-weight:600;cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;justify-content:center;gap:8px}
 button.accent,.btn.accent{background:var(--accent);border-color:var(--accent)}
 button.secondary,.btn.secondary{background:#fff;color:var(--ink)}
-button:focus-visible,.btn:focus-visible,a:focus-visible,input:focus-visible,textarea:focus-visible{outline:3px solid var(--line2);outline-offset:2px}
+button:focus-visible,.btn:focus-visible,a:focus-visible,input:focus-visible,textarea:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
 input,textarea,select{font:inherit;color:var(--ink);padding:12px 14px;border:1px solid var(--line2);border-radius:12px;width:100%;background:#fff}
 label{display:block;font-weight:600;color:var(--ink);margin:12px 0 6px;font-size:15px}
 label.inline{display:flex;gap:8px;align-items:center;font-weight:400;margin:6px 0}label.inline input{width:auto}
@@ -49,9 +50,9 @@ th{font-size:13px;font-weight:500;color:var(--muted)}.scroll{overflow-x:auto}
 .row{display:flex;flex-wrap:wrap;gap:10px;align-items:center}.between{justify-content:space-between}
 .notice{background:var(--soft);padding:12px 16px;border-radius:12px;margin-bottom:16px;font-size:15px}
 .pills a{min-height:38px;padding:0 16px;font-size:14px}
-.tag.draft{background:var(--soft)}.tag.in_review{background:#FFF4D6;color:#7A5200}.tag.approved{background:#E3ECFA;color:#1F4A7A}
+.tag.draft{background:var(--soft)}.tag.in_review{background:var(--pink);color:var(--pinkink)}.tag.approved{background:#fff;color:var(--accent);border:1px solid var(--accent)}
 .tag.published{background:var(--okbg);color:var(--ok)}.tag.archived{background:#fff;color:var(--muted);border:1px solid var(--line)}
-.tag.paid{background:var(--okbg);color:var(--ok)}.tag.failed,.tag.cancelled{background:var(--warnbg);color:var(--warn)}.tag.processing{background:#FFF4D6;color:#7A5200}
+.tag.paid{background:var(--okbg);color:var(--ok)}.tag.failed,.tag.cancelled{background:var(--warnbg);color:var(--warn)}.tag.processing{background:var(--pink);color:var(--pinkink)}
 .fields{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:0 16px}
 .checks{display:flex;flex-wrap:wrap;gap:4px 16px}.checks label{font-weight:400}
 .cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px}
@@ -72,9 +73,9 @@ let demoBanner = false;
 export const setDemoBanner = (on: boolean) => {
   demoBanner = on;
 };
-const DEMO_BANNER = `<div role="status" style="background:#7A5200;color:#fff;text-align:center;padding:8px 16px;font-weight:700">DEMO DATA — every girl, case and number on these pages is made up, for presentations only.</div>`;
+const DEMO_BANNER = `<div role="status" style="background:#8E1340;color:#fff;text-align:center;padding:8px 16px;font-weight:700">DEMO DATA — every girl, case and number on these pages is made up, for presentations only.</div>`;
 
-export const STAGING_BANNER = `<div role="status" style="background:#1F5F8B;color:#fff;text-align:center;padding:8px 16px;font-weight:700">TEST VERSION — not for real girls or real health questions.</div>`;
+export const STAGING_BANNER = `<div role="status" style="background:#4A2E8C;color:#fff;text-align:center;padding:8px 16px;font-weight:700">TEST VERSION — not for real girls or real health questions.</div>`;
 
 export function page(title: string, body: string, nav = ""): string {
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">

@@ -170,7 +170,7 @@ function header(opts = {}) {
   return h(
     "header",
     null,
-    h("div", { class: "brand" }, h("span", { class: "dot", "aria-hidden": "true" }), "ubah"),
+    h("div", { class: "brand" }, h("img", { src: "/app/rose.png", alt: "", width: 40, height: 30 }), "ubah"),
     h(
       "div",
       { class: "header-actions" },
@@ -216,7 +216,7 @@ const title = (text, sub) => h("div", { class: "title" }, h("h1", null, text), s
 // ---------- first visit: language, then how Ubah works ----------
 function viewLanguage() {
   mountBare(
-    h("div", { class: "flower", "aria-hidden": "true" }),
+    h("img", { class: "flower", src: "/app/rose.png", alt: "", width: 140, height: 104 }),
     h("h1", { class: "center" }, tr("app_choose_language")),
     h(
       "div",
