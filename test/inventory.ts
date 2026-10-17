@@ -2,6 +2,7 @@
 export const INVENTORY = [
   "GET /",
   "GET /landing.js",
+  "GET /assets/:name",
   "GET /health",
   "GET /app",
   "GET /app/icon-:size.png",
