@@ -36,7 +36,7 @@ const safeNext = (v: unknown) => {
 
 const card = (body: string) => `<div class="card" style="max-width:460px;margin:32px auto;padding:28px">${body}</div>`;
 
-interface LoginRow {
+export interface LoginRow {
   id: number;
   login: string;
   role: Role;
@@ -50,7 +50,7 @@ interface LoginRow {
   must_change_password: boolean;
 }
 
-async function loadStaff(db: Db, where: "id" | "login", value: unknown): Promise<LoginRow | undefined> {
+export async function loadStaff(db: Db, where: "id" | "login", value: unknown): Promise<LoginRow | undefined> {
   const [row] = await db.query<LoginRow>(
     `SELECT id, login, role, password_hash, active, locked_until, phone, totp_secret_enc, totp_enabled_at, totp_last_step, must_change_password
        FROM staff WHERE ${where === "login" ? "lower(login) = lower($1)" : "id = $1"}`,
@@ -60,7 +60,7 @@ async function loadStaff(db: Db, where: "id" | "login", value: unknown): Promise
 }
 
 // Counts a failed password or code. Locks the account after too many in a row.
-async function registerFailure(db: Db, req: Request, s: LoginRow, kind: "password" | "mfa"): Promise<boolean> {
+export async function registerFailure(db: Db, req: Request, s: LoginRow, kind: "password" | "mfa"): Promise<boolean> {
   const [r] = await db.query<{ locked: boolean }>(
     `UPDATE staff SET
         locked_until = CASE WHEN failed_logins + 1 >= $2 THEN now() + make_interval(mins => $3) ELSE locked_until END,
@@ -81,7 +81,7 @@ async function registerFailure(db: Db, req: Request, s: LoginRow, kind: "passwor
   return locked;
 }
 
-const isLocked = (s: LoginRow) => Boolean(s.locked_until && new Date(s.locked_until) > new Date());
+export const isLocked = (s: LoginRow) => Boolean(s.locked_until && new Date(s.locked_until) > new Date());
 
 async function completeLogin(db: Db, req: Request, s: LoginRow, next: string) {
   await db.query(`UPDATE staff SET failed_logins = 0, last_login_at = now() WHERE id = $1`, [s.id]);
@@ -92,7 +92,7 @@ async function completeLogin(db: Db, req: Request, s: LoginRow, next: string) {
 
 // ---- SMS login codes (Dadas) ----
 
-async function sendLoginCode(db: Db, s: LoginRow, req: Request): Promise<"sent" | "wait" | "no_phone"> {
+export async function sendLoginCode(db: Db, s: LoginRow, req: Request): Promise<"sent" | "wait" | "no_phone"> {
   if (!s.phone) return "no_phone";
   const recent = await db.query<{ created_at: string }>(
     `SELECT created_at FROM staff_otp WHERE staff_id = $1 AND created_at > now() - interval '1 hour' ORDER BY created_at DESC`,
@@ -112,7 +112,7 @@ async function sendLoginCode(db: Db, s: LoginRow, req: Request): Promise<"sent" 
   return "sent";
 }
 
-async function checkSmsCode(db: Db, s: LoginRow, code: string): Promise<boolean> {
+export async function checkSmsCode(db: Db, s: LoginRow, code: string): Promise<boolean> {
   const [otp] = await db.query<{ id: number; code_hash: string; attempts: number }>(
     `SELECT id, code_hash, attempts FROM staff_otp WHERE staff_id = $1 AND used_at IS NULL AND expires_at > now() ORDER BY created_at DESC LIMIT 1`,
     [s.id],
@@ -128,7 +128,7 @@ async function checkSmsCode(db: Db, s: LoginRow, code: string): Promise<boolean>
 
 // ---- Authenticator app (TOTP) ----
 
-async function checkTotp(db: Db, s: LoginRow, code: string): Promise<boolean> {
+export async function checkTotp(db: Db, s: LoginRow, code: string): Promise<boolean> {
   if (!s.totp_secret_enc) return false;
   const step = verifyTotp(decryptSecret(s.totp_secret_enc), code, s.totp_last_step == null ? null : Number(s.totp_last_step));
   if (step == null) return false;
@@ -138,7 +138,7 @@ async function checkTotp(db: Db, s: LoginRow, code: string): Promise<boolean> {
 
 const normRecovery = (c: string) => c.toUpperCase().replace(/[^A-Z0-9]/g, "");
 
-async function useRecoveryCode(db: Db, s: LoginRow, code: string): Promise<boolean> {
+export async function useRecoveryCode(db: Db, s: LoginRow, code: string): Promise<boolean> {
   const hash = sha256(`${s.id}:${normRecovery(code)}`);
   const rows = await db.query(`UPDATE staff_recovery_codes SET used_at = now() WHERE staff_id = $1 AND code_hash = $2 AND used_at IS NULL RETURNING id`, [s.id, hash]);
   return rows.length > 0;

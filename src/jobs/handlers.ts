@@ -1,4 +1,5 @@
 import type { Db } from "../db.js";
+import { purgeVoiceNotes } from "../voice/store.js";
 import { config } from "../config.js";
 import { sendCheckin, sendDueCheckins } from "../engine.js";
 import { retryOutbox } from "../channels/outbound.js";
@@ -84,10 +85,14 @@ export function registerAllJobs() {
 }
 
 // Removes what is no longer needed: ended staff sessions, used or expired one-time links and login codes,
-// and finished jobs older than 30 days (their outcome is in the audit log and the records they changed).
+// finished jobs older than 30 days, and girls' expired sessions, codes and voice notes (their outcome is in the audit log and the records they changed).
 export async function housekeeping(db: Db): Promise<void> {
   await db.query(`DELETE FROM staff_sessions WHERE (revoked_at IS NOT NULL OR expires_at < now()) AND created_at < now() - interval '30 days'`);
   await db.query(`DELETE FROM staff_tokens WHERE (used_at IS NOT NULL OR expires_at < now()) AND created_at < now() - interval '30 days'`);
   await db.query(`DELETE FROM staff_otp WHERE created_at < now() - interval '1 day'`);
   await db.query(`DELETE FROM jobs WHERE status = 'done' AND finished_at < now() - interval '30 days'`);
+  await db.query(`DELETE FROM girl_sessions WHERE revoked_at IS NOT NULL OR expires_at < now()`);
+  await db.query(`DELETE FROM girl_otp WHERE created_at < now() - interval '1 day'`);
+  // Girls' voice notes: 30 days at most, gone as soon as the message is resolved.
+  await purgeVoiceNotes(db);
 }

@@ -207,9 +207,9 @@ interface VoiceInfo {
 
 async function logIn(db: Db, user: UserRow, channel: string, kind: string, body: string, a: Analysis | null, voice: VoiceInfo | null = null) {
   await db.query(
-    `INSERT INTO messages (user_id, direction, channel, kind, body, topic, danger, coded_terms, detected_language, stt_confidence, language_mismatch, voice_unclear)
-     VALUES ($1,'in',$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
-    [user.id, channel, kind, body || "[empty]", a?.topic ?? null, a?.danger ?? null, a?.codedTerms ?? [], voice?.detected ?? null, voice?.confidence ?? null, voice?.mismatch ?? false, voice?.unclear ?? false],
+    `INSERT INTO messages (user_id, direction, channel, kind, body, original_text, chosen_language, urgent, topic, danger, coded_terms, detected_language, stt_confidence, language_mismatch, voice_unclear)
+     VALUES ($1,'in',$2,$3,$4,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
+    [user.id, channel, kind, body || "[empty]", user.language ?? null, Boolean(a && a.danger !== "none"), a?.topic ?? null, a?.danger ?? null, a?.codedTerms ?? [], voice?.detected ?? null, voice?.confidence ?? null, voice?.mismatch ?? false, voice?.unclear ?? false],
   );
 }
 

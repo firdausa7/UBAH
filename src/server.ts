@@ -19,6 +19,7 @@ import { dashboardRouter } from "./web/dashboard.js";
 import { paymentsRouter } from "./web/payments.js";
 import { modelsRouter } from "./web/models.js";
 import { appApiRouter } from "./web/appApi.js";
+import { apiRouter } from "./api/index.js";
 import { landingRouter } from "./web/landing.js";
 import { icon } from "./pwa/icons.js";
 import { dirname, join } from "node:path";
@@ -246,6 +247,10 @@ export function createApp(db: Db, opts: AppOptions = {}) {
 
   // ---- The girls' app (installable, works offline) ----
   app.use("/app/api", appApiRouter(db, opts.appApi));
+
+  // ---- The JSON API for the React app (login, girls' space, worker dashboard, admin) ----
+  const loginLimiter = rateLimit({ name: "login", windowMs: 60_000, max: opts.loginPerMin ?? config.security.rateLimitLoginPerMin });
+  app.use("/api", apiRouter(db, { loginLimiter }));
   app.get("/app/icon-:size.png", (req, res, next) => {
     const size = Number(req.params.size);
     if (size !== 192 && size !== 512) return next();
@@ -274,7 +279,6 @@ export function createApp(db: Db, opts: AppOptions = {}) {
     next();
   });
   app.use("/staff", csrfCookie, verifyCsrf);
-  const loginLimiter = rateLimit({ name: "login", windowMs: 60_000, max: opts.loginPerMin ?? config.security.rateLimitLoginPerMin });
   app.use("/staff", loginRouter(db, { loginLimiter }));
   app.use("/staff", adminRouter(db, { tokenLimiter: loginLimiter }));
   app.use("/staff", inboxRouter(db));

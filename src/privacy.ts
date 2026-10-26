@@ -41,6 +41,20 @@ export function decryptSecret(blob: string): string {
   return Buffer.concat([decipher.update(enc), decipher.final()]).toString("utf8");
 }
 
+// Girls' voice notes: the same AES-256-GCM, on raw bytes (iv | tag | ciphertext).
+export function encryptBytes(plain: Buffer): Buffer {
+  const iv = randomBytes(12);
+  const cipher = createCipheriv("aes-256-gcm", key(), iv);
+  const enc = Buffer.concat([cipher.update(plain), cipher.final()]);
+  return Buffer.concat([iv, cipher.getAuthTag(), enc]);
+}
+
+export function decryptBytes(blob: Buffer): Buffer {
+  const decipher = createDecipheriv("aes-256-gcm", key(), blob.subarray(0, 12));
+  decipher.setAuthTag(blob.subarray(12, 28));
+  return Buffer.concat([decipher.update(blob.subarray(28)), decipher.final()]);
+}
+
 // App users: nothing to send to, so only a placeholder is stored (never the device secret).
 export const encryptPhone = (raw: string) => encryptSecret(isAppId(raw) ? "app" : normalizePhone(raw));
 export const decryptPhone = decryptSecret;

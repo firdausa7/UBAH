@@ -157,6 +157,25 @@ Every page is server-rendered, works on a cheap Android phone on 3G, and shows e
 - **Clinic desk**: the web page, or from the clinic's registered phone with a desk PIN: SMS `CHECK UB-7K42 1234` / `SEEN UB-7K42 1234`, or the USSD menu. Wrong PINs lock the desk like wrong passwords.
 - **Dashboard** (`/staff/dashboard`): date range or presets, site/clinic/language filters, weekly trend charts with a table view, clinic dignity scores, **Download CSV**, **Monthly PDF report**. Counts from 1 to 4 are shown as "<5" everywhere, including exports.
 
+## One login, three areas (`/login`, `/me`, `/worker`, `/admin`)
+
+Everyone signs in at `/login`; the server sends each person to their area by role. The React app's guards are only for comfort: every `/api/me`, `/api/worker` and `/api/admin` route checks the role on the server (`src/auth/roles.ts`).
+
+| Who | Signs in with | Role | Area |
+|---|---|---|---|
+| A girl | Phone number, a 6-digit SMS code the first time (or after a forgotten PIN), then her 4-digit PIN. Five wrong PINs lock it for 30 minutes; a new SMS code unlocks it. The SMS says only "Your code: …", never "Ubah" | `girl` | `/me` |
+| Nurse or Dada | The same staff login, password and second step as `/staff` (authenticator app; SMS code for Dadas) | `health_worker` | `/worker` |
+| Admin | As above | `admin` | `/admin` |
+| Clinic desk, partner, reviewer, editor | As above | — | `/staff` |
+
+Girls stay in `users` and staff in `staff`: a girl who signs in on the web with the same phone she uses on WhatsApp is the same girl, and replies keep going to the channel she used. Girls' sessions last 7 days and end after 48 hours unused (phones are shared). Every request that changes something must carry the `X-Ubah: 1` header, which another website can't send.
+
+- **Assignments** (`/api/admin`): an admin assigns each girl to one nurse or Dada. Admins see who looks after whom, never her messages.
+- **Consent** (`/api/me/consents`): she chooses whether her health worker sees her messages, and whether they can listen to her voice notes. She can change her mind at any time. **Urgent messages always reach a human**, whatever she chose.
+- **Access log**: every time a worker or admin looks at a girl's data (profile, messages, a voice note), `access_log` records who, which girl, what and when. Append-only, never the content.
+- **Voice notes** are kept only if she shares her voice: encrypted in the database, playable only through a link made for her assigned worker that works for 5 minutes, and deleted when the message is resolved or after 30 days (`src/voice/store.ts`, run by the housekeeping in the 15-minute background sweep).
+- API errors are bare JSON codes (`{"error":"not_found"}`); nothing about a girl appears in error messages or logs.
+
 ## The girls' app
 
 `/app` is a small installable web app (plain JavaScript, no framework, system fonts; about 25 KB of code) for girls with smartphones. It uses the same engine as WhatsApp and SMS, so the answers, danger handoffs, passes and check-ins are identical.

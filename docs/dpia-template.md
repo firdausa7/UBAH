@@ -21,7 +21,11 @@ Ubah processes **health data** (sexual and reproductive health questions) and da
 | Phone number (WhatsApp/SMS) | The channel | Recognise a returning girl; send replies and the day-3 check-in | Keyed hash (HMAC-SHA-256) + AES-256-GCM encrypted copy; never in clear | Until she sends DELETE, or [retention period] of inactivity |
 | App device secret | The girls' app | Recognise the device | Keyed hash only | Until "Wipe my history" or [period] |
 | Messages (text; transcripts of voice notes) | The girl | Answer her; send danger signs to a human; train safety models (labelled, anonymous) | Database, in text | [period] |
-| Voice notes | The girl | Transcription only | Not stored after transcription | — |
+| Voice notes | The girl | Transcription; her assigned health worker listens when the transcript is unclear | Only if she consented to share her voice: AES-256-GCM encrypted in the database, reachable only through a 5-minute link made for her assigned worker; every play is in the access log. Otherwise not stored after transcription | Until the message is resolved, 30 days at most |
+| Phone number + PIN (web) | The girl | Sign in on the website | Number hashed + encrypted as above; PIN hashed (scrypt); SMS login codes hashed, 10 minutes | Until DELETE; codes 1 day |
+| Assignments and consents | Admin; the girl | Which health worker looks after her; what she shares with them | Database; consent history kept (latest choice counts) | [period] |
+| English translations of her messages, and of replies | Translation provider | Her worker understands her; she understands the reply | Database, next to the original | [period] |
+| Access log (which staff member looked at which girl's data) | System | Accountability | Append-only table; no message text | [period] |
 | Language, area/site (if she shares it) | The girl | Language of replies; nearest clinic | Site and area name only; location coordinates are never stored | [period] |
 | Referral passes, check-in answers (visited, respect) | The girl | Closing the loop; clinic dignity scores | Database; scores shown only from 5 answers | [period] |
 | Case notes by Dadas and nurses | Staff | Care and safeguarding | Database; no names or numbers by rule | [period, per safeguarding policy] |
@@ -37,7 +41,8 @@ Ubah processes **health data** (sexual and reproductive health questions) and da
 - Withdrawal: STOP (no more messages), DELETE (erase her data), "Wipe my history" in the app.
 
 ## 4. Necessity and proportionality
-- Data minimisation: no names; numbers only hashed + encrypted; coordinates never stored; voice audio not kept; aggregate statistics hide groups under 5.
+- Data minimisation: no names; numbers only hashed + encrypted; coordinates never stored; voice audio kept only with her consent, encrypted, until resolved and 30 days at most; health workers see only the girls assigned to them and only what each girl agreed to share (urgent messages always); aggregate statistics hide groups under 5.
+- Processors: [translation provider, e.g. Google Cloud Translation] receives the text of girls' messages and workers' replies; [speech-to-text provider] receives voice audio. [Record where each processes data, and the data processing agreements.]
 - Accuracy: answers only from content approved by a named health-partner reviewer.
 - Purpose limitation: data is not used for marketing or shared with third parties beyond the processors listed. [Confirm data-sharing agreements with partners: what aggregate reports they receive.]
 - Retention: [define and implement a deletion schedule; Ubah currently keeps data until DELETE].
