@@ -6,7 +6,7 @@ export const en: LanguageConfig = {
   name: "English",
   englishName: "English",
   status: "enabled",
-  stt: { code: "en", provider: "whisper" },
+  stt: { code: "en", provider: "openai" },
   translation: null,
   ttsVoiceId: null,
   dangerWordsFile: "en.txt",

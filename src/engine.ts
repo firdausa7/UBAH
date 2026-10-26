@@ -6,7 +6,7 @@ import { analyse, type Analysis } from "./ml/models.js";
 import { search, localize } from "./content/content.js";
 import { nearestClinics, matchPlace, type ClinicPlace } from "./location.js";
 import { groundedAnswer } from "./ai/llm.js";
-import { transcribe, type MockVoice } from "./ai/stt.js";
+import { transcribe, type MockVoice } from "./providers/speech.js";
 import { issuePass, SERVICE_MENU, TOPIC_SERVICES } from "./referrals.js";
 import { sendToUser, alertStaff, flushPending, type UserRow } from "./channels/outbound.js";
 import { log } from "./log.js";

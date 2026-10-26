@@ -53,6 +53,14 @@ const EnvSchema = z.object({
   STT_BASE_URL: z.string().optional(),
   STT_API_KEY: z.string().optional(),
   STT_MODEL: z.string().default("whisper-1"),
+  // Google Cloud Translation (Basic, v2): girls' messages into English for workers, replies back.
+  GOOGLE_TRANSLATE_API_KEY: z.string().default(""),
+  GOOGLE_TRANSLATE_BASE_URL: z.string().default("https://translation.googleapis.com"),
+  // Spoken replies (ElevenLabs): off unless switched on, and only for languages with an approved voice.
+  VOICE_REPLIES: bool(false),
+  ELEVENLABS_API_KEY: z.string().default(""),
+  ELEVENLABS_BASE_URL: z.string().default("https://api.elevenlabs.io"),
+  ELEVENLABS_MODEL: z.string().default("eleven_multilingual_v2"),
   STT_MIN_CONFIDENCE: z.coerce.number({ message: "must be a number" }).min(0).max(1).default(0.4),
 
   WHATSAPP_TOKEN: z.string().default(""),
@@ -167,6 +175,8 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     llm: { baseUrl: e.LLM_BASE_URL, apiKey: e.LLM_API_KEY, model: e.LLM_MODEL },
     // Speech-to-text: any OpenAI-compatible /audio/transcriptions endpoint (Whisper, or a self-hosted MMS server).
     stt: { baseUrl: e.STT_BASE_URL ?? e.LLM_BASE_URL, apiKey: e.STT_API_KEY ?? e.LLM_API_KEY, model: e.STT_MODEL, minConfidence: e.STT_MIN_CONFIDENCE },
+    translate: { apiKey: e.GOOGLE_TRANSLATE_API_KEY, baseUrl: e.GOOGLE_TRANSLATE_BASE_URL },
+    voiceReplies: { enabled: e.VOICE_REPLIES, apiKey: e.ELEVENLABS_API_KEY, baseUrl: e.ELEVENLABS_BASE_URL, model: e.ELEVENLABS_MODEL },
 
     // WhatsApp Cloud API (Meta).
     whatsapp: {
@@ -251,6 +261,9 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     if ((!cfg.africasTalking.apiKey || cfg.africasTalking.sandbox) && !staging) {
       problems.push("AT_API_KEY and a live AT_USERNAME must be set: nurse alerts and Dada login codes are sent by SMS");
     }
+    // Without translation a worker can't read a Somali, Kiswahili or Oromo message.
+    if (!cfg.translate.apiKey && !staging) problems.push("GOOGLE_TRANSLATE_API_KEY must be set: workers read girls' messages in English");
+    if (cfg.voiceReplies.enabled && !cfg.voiceReplies.apiKey) problems.push("VOICE_REPLIES is on but ELEVENLABS_API_KEY is not set");
     if (!publicUrl || !cfg.baseUrl.startsWith("https://")) problems.push("BASE_URL must be the public https:// address");
     if (!cfg.databaseUrl) problems.push("DATABASE_URL must point to Postgres (embedded PGlite is for development only)");
     if (cfg.whatsapp.token && !cfg.whatsapp.appSecret) problems.push("WHATSAPP_APP_SECRET must be set so webhook signatures are checked");
@@ -286,6 +299,7 @@ export const config: Config = loadOrExit();
 export const mockMode = {
   llm: () => !config.llm.apiKey,
   stt: () => !config.stt.apiKey,
+  translate: () => !config.translate.apiKey,
   whatsapp: () => !config.whatsapp.token,
   sms: () => !config.africasTalking.apiKey,
   mpesa: () => !config.mpesa.consumerKey,

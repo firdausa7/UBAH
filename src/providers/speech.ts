@@ -2,9 +2,10 @@ import { config, mockMode } from "../config.js";
 import { log } from "../log.js";
 import { ALL_LANGUAGES, languageConfig } from "../languages/index.js";
 
-// Speech-to-text for voice notes. Any OpenAI-compatible /audio/transcriptions endpoint:
-// OpenAI Whisper, or a self-hosted Whisper / Meta MMS model fine-tuned on Somali voice notes.
-// The provider and language code per language come from src/languages/.
+// Speech-to-text for voice notes, behind one interface:
+//   openai  any OpenAI-compatible /audio/transcriptions endpoint (OpenAI, or a self-hosted Whisper server)
+//   mock    no network: development, tests, and languages with no real provider yet (Afaan Oromoo)
+// The provider and language code per language come from src/languages/; keys from STT_* (see .env.example).
 //
 // Her chosen language is a soft hint (the "prompt"), never forced: girls mix Somali, Kiswahili and
 // English in one note, and forcing one language garbles the rest. The model's own guess is kept.
@@ -14,6 +15,11 @@ export interface Transcript {
   ok: boolean;
   language: string | null; // detected by the model (our code), if it said
   confidence: number | null; // 0..1, if the model gave enough to estimate it
+}
+
+export interface SpeechProvider {
+  name: "openai" | "mock";
+  transcribe(audio: Buffer, mimeType: string, hint: string | null, mock: MockVoice): Promise<Transcript>;
 }
 
 export interface MockVoice {
@@ -72,25 +78,40 @@ async function request(audio: Buffer, mimeType: string, hint: string | null, ver
   });
 }
 
+// Development and tests: the simulator sends the "spoken" words alongside the fake audio.
+// Real audio with no words attached comes back empty, so the girl is asked to type.
+export const mockSpeech: SpeechProvider = {
+  name: "mock",
+  async transcribe(_audio, _mimeType, hint, m) {
+    const text = (m.mockText ?? "").trim();
+    return { text, ok: text.length > 0, language: text ? (m.mockLanguage ?? hint ?? null) : null, confidence: text ? (m.mockConfidence ?? 1) : null };
+  },
+};
+
+export const openAISpeech: SpeechProvider = {
+  name: "openai",
+  async transcribe(audio, mimeType, hint) {
+    try {
+      let res = await request(audio, mimeType, hint, true);
+      // Some servers (and newer OpenAI models) don't offer verbose_json: ask again for plain text.
+      if (res.status === 400) res = await request(audio, mimeType, hint, false);
+      if (!res.ok) throw new Error(`STT HTTP ${res.status}`);
+      const json: any = await res.json();
+      const text = String(json.text ?? "").trim();
+      return { text, ok: text.length > 0, language: detectedCode(json.language), confidence: confidenceOf(json) };
+    } catch (err) {
+      log.warn({ err: (err as Error).message }, "speech-to-text failed");
+      return { text: "", ok: false, language: null, confidence: null };
+    }
+  },
+};
+
+export function speechProviderFor(lang: string | null | undefined): SpeechProvider {
+  if (mockMode.stt()) return mockSpeech;
+  return languageConfig(lang)?.stt.provider === "openai" ? openAISpeech : mockSpeech;
+}
+
 export async function transcribe(audio: Buffer, mimeType: string, lang?: string | null, mock: MockVoice | string = {}): Promise<Transcript> {
   const m: MockVoice = typeof mock === "string" ? { mockText: mock } : mock;
-  const provider = languageConfig(lang)?.stt.provider ?? "whisper";
-  if (mockMode.stt() || provider === "mock") {
-    // Local testing: the simulator sends the "spoken" words alongside the fake audio.
-    // A language with no real provider yet (Afaan Oromoo) also lands here: real notes come back unclear.
-    const text = (m.mockText ?? "").trim();
-    return { text, ok: text.length > 0, language: text ? (m.mockLanguage ?? lang ?? null) : null, confidence: text ? (m.mockConfidence ?? 1) : null };
-  }
-  try {
-    let res = await request(audio, mimeType, lang ?? null, true);
-    // Some servers (and newer OpenAI models) don't offer verbose_json: ask again for plain text.
-    if (res.status === 400) res = await request(audio, mimeType, lang ?? null, false);
-    if (!res.ok) throw new Error(`STT HTTP ${res.status}`);
-    const json: any = await res.json();
-    const text = String(json.text ?? "").trim();
-    return { text, ok: text.length > 0, language: detectedCode(json.language), confidence: confidenceOf(json) };
-  } catch (err) {
-    log.warn({ err: (err as Error).message }, "speech-to-text failed");
-    return { text: "", ok: false, language: null, confidence: null };
-  }
+  return speechProviderFor(lang).transcribe(audio, mimeType, lang ?? null, m);
 }

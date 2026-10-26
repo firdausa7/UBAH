@@ -1,14 +1,15 @@
 import type { LanguageConfig } from "./types.js";
 
 // Afaan Oromoo. Beta until tested with real Oromo speakers.
-// Whisper has no Oromo, so speech-to-text needs another provider (e.g. Meta MMS); mock until one is chosen.
+// OpenAI speech-to-text has no Oromo, so its voice notes come back unclear (she is asked to type)
+// until another provider is added (e.g. Meta MMS). Typed Oromo is translated by Google.
 export const om: LanguageConfig = {
   code: "om",
   name: "Afaan Oromoo",
   englishName: "Afaan Oromoo",
   status: "beta",
   stt: { code: "om", provider: "mock" },
-  translation: { code: "om", provider: "llm" },
+  translation: { code: "om", provider: "google" },
   ttsVoiceId: null,
   dangerWordsFile: "om.txt",
   uiStringsFile: "data/strings/om.csv",

@@ -129,7 +129,7 @@ export function createApp(db: Db, opts: AppOptions = {}) {
         ok: true,
         db: "ok",
         uptimeS: Math.round((Date.now() - started) / 1000),
-        ...(config.production ? {} : { mock: { llm: mockMode.llm(), stt: mockMode.stt(), whatsapp: mockMode.whatsapp(), sms: mockMode.sms() } }),
+        ...(config.production ? {} : { mock: { llm: mockMode.llm(), stt: mockMode.stt(), translate: mockMode.translate(), whatsapp: mockMode.whatsapp(), sms: mockMode.sms() } }),
       });
     } catch (err) {
       log.error({ err: (err as Error).message }, "health check failed");

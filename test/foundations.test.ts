@@ -21,6 +21,7 @@ const PROD_OK = {
   AT_USERNAME: "ubah",
   AT_API_KEY: "key",
   SMS_WEBHOOK_KEY: "k".repeat(20),
+  GOOGLE_TRANSLATE_API_KEY: "translate-key",
 };
 
 describe("config validation", () => {

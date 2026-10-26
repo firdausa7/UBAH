@@ -233,6 +233,20 @@ Her chosen language is sent as a soft hint, never forced, because girls mix Soma
 
 **Unverified:** Somali dialects (Maay as well as Maxaa tiri) and Afaan Oromoo have not been tested. Whisper has no Afaan Oromoo at all, so Oromo voice notes are treated as unclear until another provider is chosen; typed Oromo works.
 
+### Providers: speech, translation, spoken replies
+
+Each sits behind one interface in `src/providers/`, with a mock, so development and tests run with no keys. Keys go in the environment (see `.env.example`).
+
+| What | Provider | Setting | Without a key |
+|---|---|---|---|
+| Speech-to-text (`speech.ts`) | OpenAI (or any OpenAI-compatible server) | `STT_API_KEY`, `STT_BASE_URL`, `STT_MODEL` | Mock: real recordings come back "unclear" and she is asked to type |
+| Translation (`translation.ts`) | Google Cloud Translation, Basic (v2), API key | `GOOGLE_TRANSLATE_API_KEY` | Mock marks the text (`[so→en] …`). **Required in production** |
+| Spoken replies (`voice.ts`) | ElevenLabs | `VOICE_REPLIES=true`, `ELEVENLABS_API_KEY` | Off by default. Even when on, only for a language with an approved voice (`ttsVoiceId` in `src/languages/<lang>.ts`, none yet); the text is always sent too |
+
+Translation is for understanding only: girls' messages are translated into English for their health worker, and the worker's reply back into her language. Nothing translated is ever sent without a person having written it, and the original is always kept next to the translation. A failed translation keeps the original and says so. For a message that mixes languages, Google detects the language itself and translates the whole text.
+
+To get a Google key: Google Cloud console → APIs & Services → enable **Cloud Translation API** → Credentials → Create API key → restrict it to the Cloud Translation API. Google processes the text outside Kenya: include it in the DPIA.
+
 ### Danger words
 
 Plain-text lists, one per language, in `data/danger/` (see the README there). Nurses and translators can edit them without touching code. Every message is checked against every list, because girls mix languages; any match is urgent. The Somali, Kiswahili and Oromo lists are DRAFTS written without native speakers and must be checked before the pilot.

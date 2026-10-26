@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll, afterEach, vi } from "vitest";
 import { freshDb, girl } from "./helpers.js";
-import { confidenceOf, detectedCode, transcribe } from "../src/ai/stt.js";
+import { confidenceOf, detectedCode, transcribe } from "../src/providers/speech.js";
 import { config } from "../src/config.js";
 import type { Db } from "../src/db.js";
 

@@ -129,7 +129,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     console.error("No speech-to-text endpoint is configured (STT_BASE_URL / STT_API_KEY). See README → Voice.");
     process.exit(1);
   }
-  const { transcribe } = await import("./stt.js");
+  const { transcribe } = await import("../providers/speech.js");
   const { items, refused } = readManifest(manifest);
   const result = await evaluate(items, dirname(resolve(manifest)), (a, m, l) => transcribe(a, m, l), config.stt.model, refused);
   const stamp = result.at.slice(0, 19).replace(/[:T]/g, "-");
