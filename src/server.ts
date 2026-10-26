@@ -22,6 +22,7 @@ import { appApiRouter } from "./web/appApi.js";
 import { landingRouter } from "./web/landing.js";
 import { icon } from "./pwa/icons.js";
 import { dirname, join } from "node:path";
+import { existsSync } from "node:fs";
 import { bootstrapModels } from "./ml/registry.js";
 import { opsPrometheus, opsStatus, scheduleUrgentReminder } from "./ops.js";
 import { handleDeskSms } from "./clinicDesk.js";
@@ -49,6 +50,9 @@ export interface AppOptions {
 }
 
 const PWA_DIR = join(dirname(fileURLToPath(import.meta.url)), "pwa", "public");
+// The React app (web/), built with `npm run build` in web/. Absent in tests and before the first build.
+const WEB_DIST = join(dirname(fileURLToPath(import.meta.url)), "..", "web", "dist");
+const WEB_ROUTES = ["/login", "/me", "/me/{*rest}", "/worker", "/worker/{*rest}", "/admin", "/admin/{*rest}"];
 
 // Work that continues after a webhook has answered (Meta and Africa's Talking want a fast 200).
 // Tracked so a graceful shutdown waits for it instead of dropping a girl's message.
@@ -281,6 +285,19 @@ export function createApp(db: Db, opts: AppOptions = {}) {
   app.use("/staff", paymentsRouter(db));
   app.use("/staff", modelsRouter(db));
   app.use("/staff", staffRouter(db));
+
+  // ---- The React app (web/dist): login, girls' space, worker dashboard, admin ----
+  // Only these areas belong to it; the landing page, /staff and /app stay server-rendered.
+  // Before the first `npm run build` they fall through to the normal 404 page.
+  app.use("/ui", express.static(join(WEB_DIST, "ui"), { immutable: true, maxAge: "365d" }));
+  for (const path of WEB_ROUTES) {
+    app.get(path, (_req, res, next) => {
+      const index = join(WEB_DIST, "index.html");
+      if (!existsSync(index)) return next();
+      res.setHeader("Cache-Control", "no-cache");
+      res.sendFile(index);
+    });
+  }
 
   // ---- Not found and errors ----
   app.use((req, res) => {

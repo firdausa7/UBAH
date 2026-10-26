@@ -21,7 +21,7 @@ export const SO_SUFFIXES = ["kayga", "tayda", "kaaga", "taada", "kiisa", "tiisa"
 
 export type Lang = "en" | "so" | "sw" | "om" | string;
 
-function words(text: string, keepApostrophes: boolean): string[] {
+export function words(text: string, keepApostrophes: boolean): string[] {
   return text
     .toLowerCase()
     .normalize("NFKD")

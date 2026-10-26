@@ -31,8 +31,8 @@ export function girl(db: Db, phone = "0712000001", channel: "simulator" | "sms" 
       await handleIncoming(db, { channel, from: phone, text });
       return (await replies()).join("\n---\n");
     },
-    async voice(spoken: string) {
-      await handleIncoming(db, { channel, from: phone, voice: { audio: Buffer.from("fake"), mimeType: "audio/ogg", mockText: spoken } });
+    async voice(spoken: string, heard: { mockLanguage?: string; mockConfidence?: number } = {}) {
+      await handleIncoming(db, { channel, from: phone, voice: { audio: Buffer.from("fake"), mimeType: "audio/ogg", mockText: spoken, ...heard } });
       return (await replies()).join("\n---\n");
     },
     replies,

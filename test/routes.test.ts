@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeAll } from "vitest";
 import request from "supertest";
 import { createHmac } from "node:crypto";
+import { existsSync } from "node:fs";
 import { freshDb, girl, staffClient, type StaffClient } from "./helpers.js";
 import { createApp } from "../src/server.js";
 import { config } from "../src/config.js";
@@ -75,6 +76,17 @@ describe("route inventory", () => {
       ].flatMap((router: any) => routesOf(router.stack, "/staff")),
     ].sort();
     expect(registered).toEqual(INVENTORY);
+  });
+
+  it("serves the React app only for its own areas (once built), never for other unknown URLs", async () => {
+    const built = existsSync(new URL("../web/dist/index.html", import.meta.url));
+    for (const path of ["/login", "/me", "/me/chat", "/worker", "/worker/inbox/3", "/admin", "/admin/assign"]) {
+      const res = await request(app).get(path);
+      expect(res.status, path).toBe(built ? 200 : 404);
+      if (built) expect(res.text).toContain('<div id="root">');
+    }
+    expect((await request(app).get("/meeting")).status).toBe(404);
+    expect((await request(app).get("/workers")).status).toBe(404);
   });
 
   it("every staff page works for its roles and every form is CSRF-protected", async () => {

@@ -9,3 +9,7 @@ data/labeled/
 *.log
 data/stt-eval/
 .claude/
+
+# Frontend (web/)
+web/node_modules/
+web/dist/

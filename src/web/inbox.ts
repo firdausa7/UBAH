@@ -3,6 +3,7 @@ import type { Db } from "../db.js";
 import { config } from "../config.js";
 import { auditReq } from "../audit.js";
 import { LANGUAGES } from "../i18n.js";
+import { workerLabel } from "../languages/index.js";
 import { sendToUser, type UserRow } from "../channels/outbound.js";
 import { canSee, caseBus, caseEvent, escalateToNurse, REASON_LABEL, visibleSql, type CaseSignal } from "../cases.js";
 import { csrfField } from "../security/csrf.js";
@@ -46,6 +47,14 @@ export const LIVE_JS = `
   });
 })();
 `;
+
+// What the speech model made of a voice note: shown above its transcript. The audio itself is not kept.
+function voiceNote(m: { detected_language: string | null; stt_confidence: number | null; language_mismatch: boolean; voice_unclear: boolean }, chosen: string | null): string {
+  const bits = [`<span class="muted">Voice note${m.stt_confidence !== null ? ` · ${Math.round(m.stt_confidence * 100)}% sure` : ""} · </span>`];
+  if (m.voice_unclear) bits.push(`<span class="tag urgent">Audio unclear: she was asked to try again or type</span> `);
+  if (m.language_mismatch) bits.push(`<span class="tag">Sounded like ${esc(workerLabel(m.detected_language))}, she chose ${esc(workerLabel(chosen))}</span> `);
+  return bits.join("");
+}
 
 export function inboxRouter(db: Db): Router {
   const r = Router();
@@ -99,7 +108,7 @@ export function inboxRouter(db: Db): Router {
     const cards = cases
       .map(
         (c) => `<div class="card"><div class="row between"><span><span class="tag ${c.urgent ? "urgent" : ""}">${esc(REASON_LABEL[c.reason] ?? c.reason)}</span> ${c.level === "nurse" ? `<span class="tag">Nurse</span>` : ""}</span><span class="muted">${ago(c.created_at)}</span></div>
-<p class="muted">Girl ${esc(c.anon_id)} · ${esc(LANGUAGES[c.language] ?? c.language ?? "?")} · ${esc(c.channel)} · ${c.assignee ? `with ${esc(c.assignee)}` : "<strong>unassigned</strong>"}</p><p>${esc(c.summary)}</p><a class="btn secondary" href="/staff/cases/${c.id}">Open case</a></div>`,
+<p class="muted">Girl ${esc(c.anon_id)} · ${esc(workerLabel(c.language))} · ${esc(c.channel)} · ${c.assignee ? `with ${esc(c.assignee)}` : "<strong>unassigned</strong>"}</p><p>${esc(c.summary)}</p><a class="btn secondary" href="/staff/cases/${c.id}">Open case</a></div>`,
       )
       .join("");
     res.send(
@@ -109,7 +118,7 @@ export function inboxRouter(db: Db): Router {
 ${h1("Dada", "inbox", "Care team")}${notice(req.query)}<p class="lead">Urgent cases come first. The AI drafts; a Dada or nurse always decides what is sent.${me.role === "dada" ? " Medical and self-harm cases go to nurses; escalate any case you need help with." : ""}</p>
 <div class="row pills" style="margin-bottom:10px">${pill("Open", status === "open", qs({ status: "open" }))}${pill("Handled", status === "handled", qs({ status: "handled" }))}</div>
 <div class="row pills" style="margin-bottom:18px">${pill("Urgent", f.urgent, qs({ urgent: f.urgent ? null : "1" }))}${pill("Mine", f.mine, qs({ mine: f.mine ? null : "1", unassigned: null }))}${pill("Unassigned", f.unassigned, qs({ unassigned: f.unassigned ? null : "1", mine: null }))}
-${Object.entries(LANGUAGES).map(([l, n]) => pill(n, f.lang === l, qs({ lang: f.lang === l ? null : l }))).join("")}</div>
+${Object.keys(LANGUAGES).map((l) => pill(workerLabel(l), f.lang === l, qs({ lang: f.lang === l ? null : l }))).join("")}</div>
 ${cards || `<div class="card">No ${status} cases match.</div>`}<script src="/staff/assets/live.js" defer></script>`,
         nav(req),
       ),
@@ -160,7 +169,7 @@ ${cards || `<div class="card">No ${status} cases match.</div>`}<script src="/sta
     if (!c) return;
     const me = staffOf(req);
     await auditReq(db, req, { action: "case.view", targetType: "case", targetId: c.id });
-    const msgs = await db.query(`SELECT m.direction, m.kind, m.body, m.created_at, s.name AS sender FROM messages m LEFT JOIN staff s ON s.id = m.sent_by_staff WHERE m.user_id = $1 ORDER BY m.id DESC LIMIT 40`, [c.user_id]);
+    const msgs = await db.query(`SELECT m.direction, m.kind, m.body, m.created_at, m.detected_language, m.stt_confidence, m.language_mismatch, m.voice_unclear, s.name AS sender FROM messages m LEFT JOIN staff s ON s.id = m.sent_by_staff WHERE m.user_id = $1 ORDER BY m.id DESC LIMIT 40`, [c.user_id]);
     const notes = await db.query(`SELECT n.body, n.created_at, s.name FROM case_notes n JOIN staff s ON s.id = n.staff_id WHERE n.case_id = $1 ORDER BY n.id`, [c.id]);
     const events = await db.query(`SELECT e.kind, e.at, e.details, s.name FROM case_events e LEFT JOIN staff s ON s.id = e.staff_id WHERE e.case_id = $1 ORDER BY e.id`, [c.id]);
     const team = me.role === "dada" ? [] : await db.query(`SELECT id, name, role FROM staff WHERE active AND role IN ('nurse','dada') ORDER BY role DESC, name`);
@@ -183,7 +192,7 @@ ${cards || `<div class="card">No ${status} cases match.</div>`}<script src="/sta
 
     const thread = msgs
       .reverse()
-      .map((m) => `<div class="bubble ${m.direction === "in" ? "in" : "out"}">${m.kind === "voice" ? `<span class="muted">Voice note · </span>` : ""}${esc(m.body)}${m.sender ? `<div class="muted">— ${esc(m.sender)}</div>` : ""}</div>`)
+      .map((m) => `<div class="bubble ${m.direction === "in" ? "in" : "out"}">${m.kind === "voice" ? voiceNote(m, c.language) : ""}${esc(m.body)}${m.sender ? `<div class="muted">— ${esc(m.sender)}</div>` : ""}</div>`)
       .join("");
     const protection =
       c.reason === "danger_safety" || c.site_id
@@ -197,7 +206,7 @@ ${contacts.length ? `<h3>Referral contacts</h3><ul class="timeline">${contacts.m
       page(
         `Case ${c.id}`,
         `<p class="noprint"><a href="/staff/inbox">← Inbox</a></p>${notice(req.query)}<div class="card"><span class="tag ${c.urgent ? "urgent" : ""}">${esc(REASON_LABEL[c.reason] ?? c.reason)}</span> <span class="tag">${c.level === "nurse" ? "Nurse level" : "Dada level"}</span> ${open ? "" : `<span class="tag ok">Handled</span>`}
-<h1 style="margin-top:10px"><em>Girl</em> ${esc(c.anon_id)}</h1><p class="muted">${esc(LANGUAGES[c.language] ?? c.language ?? "?")} · ${esc(c.channel)} · opened ${ago(c.created_at)} · ${c.assignee ? `with ${esc(c.assignee)}` : "unassigned"}</p>
+<h1 style="margin-top:10px"><em>Girl</em> ${esc(c.anon_id)}</h1><p class="muted">${esc(workerLabel(c.language))} · ${esc(c.channel)} · opened ${ago(c.created_at)} · ${c.assignee ? `with ${esc(c.assignee)}` : "unassigned"}</p>
 <div class="row">${actions}</div>${assignForm}</div>
 <div class="card"><h2>Conversation</h2>${thread}</div>
 ${open ? `<div class="card"><h2>Reply</h2><form method="post" action="/staff/cases/${c.id}/reply">${csrfField(req)}

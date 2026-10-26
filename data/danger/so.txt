@@ -1,0 +1,40 @@
+# Somali danger words (Soomaali).
+# DRAFT: needs checking by a Somali-speaking nurse and translator, including Maay speakers.
+
+[medical]
+# heavy bleeding / bleeding that won't stop
+dhiig badan
+dhiigbax*
+dhiig joogsan waayay
+dhiigii ma joogsanayo
+# fainted
+suuxday
+suuxsan
+miyir beelay
+# baby not moving
+ilm* ma dhaqaaq*
+# can't breathe
+neefsan kari waayay
+ma neefsan karo
+# convulsions
+qallal*
+
+[safety]
+# rape
+kufsi
+kufsad*
+# beating, abuse
+i garaac*
+jirdil*
+# FGM: "they will circumcise me"
+gudniin
+gudi doon*
+
+[selfharm]
+# kill myself
+is dil*
+isdil*
+naftayda dil*
+# I want to die
+inaan dhinto
+dhimasho rab*

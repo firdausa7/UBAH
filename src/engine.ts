@@ -6,7 +6,7 @@ import { analyse, type Analysis } from "./ml/models.js";
 import { search, localize } from "./content/content.js";
 import { nearestClinics, matchPlace, type ClinicPlace } from "./location.js";
 import { groundedAnswer } from "./ai/llm.js";
-import { transcribe } from "./ai/stt.js";
+import { transcribe, type MockVoice } from "./ai/stt.js";
 import { issuePass, SERVICE_MENU, TOPIC_SERVICES } from "./referrals.js";
 import { sendToUser, alertStaff, flushPending, type UserRow } from "./channels/outbound.js";
 import { log } from "./log.js";
@@ -21,7 +21,7 @@ export interface Incoming {
   channel: "whatsapp" | "sms" | "simulator" | "app";
   from: string; // phone number (never stored in clear)
   text?: string;
-  voice?: { audio: Buffer; mimeType: string; mockText?: string };
+  voice?: { audio: Buffer; mimeType: string } & MockVoice;
   // A shared WhatsApp location. Used once to find the nearest clinic, never stored.
   location?: { lat: number; lng: number; name?: string; address?: string };
 }
@@ -79,11 +79,20 @@ export async function handleIncoming(db: Db, msg: Incoming): Promise<void> {
   // Voice note -> text (Somali speech model in the pilot).
   let text = (msg.text ?? "").trim();
   let kind = "text";
+  let voice: VoiceInfo | null = null;
   if (msg.voice) {
     kind = "voice";
-    const tr = await transcribe(msg.voice.audio, msg.voice.mimeType, user.language, msg.voice.mockText);
+    const tr = await transcribe(msg.voice.audio, msg.voice.mimeType, user.language, msg.voice);
+    voice = {
+      detected: tr.language,
+      confidence: tr.confidence,
+      // Her choice and the model's guess disagree: keep both and show the worker.
+      mismatch: Boolean(tr.language && user.language && tr.language !== user.language),
+      unclear: !tr.ok || (tr.confidence !== null && tr.confidence < config.stt.minConfidence),
+    };
     if (!tr.ok) {
-      await db.query(`INSERT INTO messages (user_id, direction, channel, kind, body) VALUES ($1,'in',$2,'voice','[voice note: not understood]')`, [user.id, msg.channel]);
+      await logIn(db, user, msg.channel, "voice", "[voice note: not understood]", null, voice);
+      if (!isNew) await flagUnclearVoice(db, user, "");
       return say(db, user, "voice_failed");
     }
     text = tr.text;
@@ -96,7 +105,7 @@ export async function handleIncoming(db: Db, msg: Incoming): Promise<void> {
     if (early.danger !== "none") {
       if (user.opted_out) await db.query(`UPDATE users SET opted_out = FALSE WHERE id = $1`, [user.id]);
       user.opted_out = false;
-      await logIn(db, user, msg.channel, kind, text, early);
+      await logIn(db, user, msg.channel, kind, text, early, voice);
       return handleDanger(db, user, early, text);
     }
   }
@@ -104,15 +113,23 @@ export async function handleIncoming(db: Db, msg: Incoming): Promise<void> {
   if (isNew || user.opted_out) {
     if (user.opted_out) await db.query(`UPDATE users SET opted_out = FALSE WHERE id = $1`, [user.id]);
     user.opted_out = false;
-    await logIn(db, user, msg.channel, kind, text, null);
+    await logIn(db, user, msg.channel, kind, text, null, voice);
     await setState(db, user, { step: "language" });
     return say(db, user, "welcome");
+  }
+
+  // A voice note we heard poorly (no danger sign in it): don't act on a guess, and never on a
+  // command like DELETE. A worker is told; she is gently asked to try again or type.
+  if (voice?.unclear) {
+    await logIn(db, user, msg.channel, kind, text, null, voice);
+    await flagUnclearVoice(db, user, text);
+    return say(db, user, "voice_failed");
   }
 
   // Commands that work at any time.
   const cmd = text.toUpperCase();
   if (cmd === "STOP") {
-    await logIn(db, user, msg.channel, kind, text, null);
+    await logIn(db, user, msg.channel, kind, text, null, voice);
     await say(db, user, "stopped");
     await db.query(`UPDATE users SET opted_out = TRUE WHERE id = $1`, [user.id]);
     await db.query(`DELETE FROM pending_outbound WHERE user_id = $1`, [user.id]);
@@ -121,7 +138,7 @@ export async function handleIncoming(db: Db, msg: Incoming): Promise<void> {
   // "NEAR <area or landmark>": find the nearest partner clinic.
   const near = text.match(/^\s*(NEAR|KARIIB|KARIBU|DHIYOO)\s+(.{2,80})$/i);
   if (near) {
-    await logIn(db, user, msg.channel, kind, "[asked for the nearest clinic]", null);
+    await logIn(db, user, msg.channel, kind, "[asked for the nearest clinic]", null, voice);
     return suggestNearest(db, user, { text: near[2] });
   }
   if (cmd === "DELETE") {
@@ -132,11 +149,11 @@ export async function handleIncoming(db: Db, msg: Incoming): Promise<void> {
     return;
   }
   if (cmd === "HELP") {
-    await logIn(db, user, msg.channel, kind, text, null);
+    await logIn(db, user, msg.channel, kind, text, null, voice);
     return say(db, user, "help");
   }
   if (cmd === "MENU") {
-    await logIn(db, user, msg.channel, kind, text, null);
+    await logIn(db, user, msg.channel, kind, text, null, voice);
     await setState(db, user, { step: "language" });
     return say(db, user, "welcome");
   }
@@ -145,7 +162,7 @@ export async function handleIncoming(db: Db, msg: Incoming): Promise<void> {
 
   // Check-in replies are numbers only: don't run them through the classifiers.
   if (state.step === "language") {
-    await logIn(db, user, msg.channel, kind, text, null);
+    await logIn(db, user, msg.channel, kind, text, null, voice);
     const lang = LANGUAGE_MENU.find(([n, code]) => n === text || code === text.toLowerCase())?.[1];
     if (!lang) return say(db, user, "welcome");
     user.language = lang;
@@ -154,13 +171,13 @@ export async function handleIncoming(db: Db, msg: Incoming): Promise<void> {
     return say(db, user, "language_set");
   }
   if (state.step === "checkin_visited" || state.step === "checkin_clinic" || state.step === "checkin_respect") {
-    await logIn(db, user, msg.channel, kind, text, null);
+    await logIn(db, user, msg.channel, kind, text, null, voice);
     return handleCheckinReply(db, user, state, text);
   }
 
   // Free text: understand it first.
   const a = analyse(text, user.language);
-  await logIn(db, user, msg.channel, kind, text, a);
+  await logIn(db, user, msg.channel, kind, text, a, voice);
 
   if (a.danger !== "none") return handleDanger(db, user, a, text);
 
@@ -181,11 +198,26 @@ export async function handleIncoming(db: Db, msg: Incoming): Promise<void> {
   return answerQuestion(db, user, a, text);
 }
 
-async function logIn(db: Db, user: UserRow, channel: string, kind: string, body: string, a: Analysis | null) {
+interface VoiceInfo {
+  detected: string | null;
+  confidence: number | null;
+  mismatch: boolean;
+  unclear: boolean;
+}
+
+async function logIn(db: Db, user: UserRow, channel: string, kind: string, body: string, a: Analysis | null, voice: VoiceInfo | null = null) {
   await db.query(
-    `INSERT INTO messages (user_id, direction, channel, kind, body, topic, danger, coded_terms) VALUES ($1,'in',$2,$3,$4,$5,$6,$7)`,
-    [user.id, channel, kind, body || "[empty]", a?.topic ?? null, a?.danger ?? null, a?.codedTerms ?? []],
+    `INSERT INTO messages (user_id, direction, channel, kind, body, topic, danger, coded_terms, detected_language, stt_confidence, language_mismatch, voice_unclear)
+     VALUES ($1,'in',$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
+    [user.id, channel, kind, body || "[empty]", a?.topic ?? null, a?.danger ?? null, a?.codedTerms ?? [], voice?.detected ?? null, voice?.confidence ?? null, voice?.mismatch ?? false, voice?.unclear ?? false],
   );
+}
+
+// One open "audio unclear" case per girl at a time: repeated tries add to it, they don't flood the inbox.
+async function flagUnclearVoice(db: Db, user: UserRow, partial: string) {
+  const [open] = await db.query(`SELECT id FROM cases WHERE user_id = $1 AND status = 'open' LIMIT 1`, [user.id]);
+  if (open) return;
+  await openCase(db, user, "voice_unclear", false, partial ? `Heard (unsure): ${partial}` : "Voice note could not be transcribed");
 }
 
 async function answerQuestion(db: Db, user: UserRow, a: Analysis, question: string) {

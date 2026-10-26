@@ -1,0 +1,24 @@
+# Afaan Oromoo danger words.
+# DRAFT and BETA: needs checking with Oromo-speaking nurses and translators before Oromo is enabled.
+
+[medical]
+# heavy bleeding
+dhiig* baay'ee
+# fainted
+of wallaal*
+# can't breathe
+hafuura baafachuu hin danda'u
+
+[safety]
+# rape
+gudeed*
+# hits me
+na rukut*
+# FGM
+dhaqna qab*
+
+[selfharm]
+# kill myself
+of ajjees*
+# want to die
+du'uu barbaad*

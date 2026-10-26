@@ -10,6 +10,8 @@
     "train": "tsx src/ml/trainCli.ts",
     "seed": "tsx src/seed.ts",
     "typecheck": "tsc --noEmit",
+    "build:web": "npm --prefix web install && npm --prefix web run build",
+    "build": "npm run build:web && tsc",
     "migrate": "tsx src/migrateCli.ts",
     "create-admin": "tsx src/createAdmin.ts",
     "lint": "oxlint --deny-warnings src test",

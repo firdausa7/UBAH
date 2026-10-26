@@ -1,0 +1,40 @@
+# English danger words. The patterns in src/ml/models.ts are an extra safety net on top of this list.
+
+[medical]
+heavy bleeding
+bleeding heavily
+bleeding a lot
+won't stop bleeding
+fainted
+passed out
+can't breathe
+cannot breathe
+baby not moving
+baby is not moving
+water broke
+convulsion*
+seizure*
+
+[safety]
+rape
+raped
+raping
+forced me
+beats me
+beat me
+hits me
+hit me
+abused
+not safe
+threatens me
+marry me off
+circumcise me
+
+[selfharm]
+kill myself
+want to die
+suicid*
+hurt myself
+cut myself
+end my life
+don't want to live

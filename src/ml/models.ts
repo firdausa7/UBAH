@@ -3,6 +3,7 @@ import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { predict, type ModelJson } from "./classifier.js";
 import { expandCodedTerms } from "./glossary.js";
+import { findDangerWords, worstDanger, type DangerMatch } from "./dangerWords.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
 export const MODELS_DIR = process.env.MODELS_DIR ?? join(here, "../../models");
@@ -43,7 +44,8 @@ export interface Analysis {
   topic: string | null;
   topicConfidence: number;
   danger: "none" | "medical" | "safety" | "selfharm";
-  dangerSource: "rule" | "model" | "none";
+  dangerSource: "rule" | "list" | "model" | "none";
+  dangerWord: DangerMatch | null; // the danger-list entry that matched, for the worker
 }
 
 export function analyse(raw: string, lang: string | null = "en"): Analysis {
@@ -52,9 +54,14 @@ export function analyse(raw: string, lang: string | null = "en"): Analysis {
   let danger: Analysis["danger"] = "none";
   let dangerSource: Analysis["dangerSource"] = "none";
   const rule = DANGER_RULES.find((r) => r.re.test(text));
+  // The per-language lists (data/danger/), checked in every language: girls mix languages.
+  const dangerWord = rule ? null : worstDanger(findDangerWords(text));
   if (rule) {
     danger = rule.label;
     dangerSource = "rule";
+  } else if (dangerWord) {
+    danger = dangerWord.label;
+    dangerSource = "list";
   } else {
     const dm = model("danger");
     if (dm) {
@@ -77,5 +84,5 @@ export function analyse(raw: string, lang: string | null = "en"): Analysis {
       topicConfidence = p.probs[p.label];
     }
   }
-  return { text, codedTerms: found.map((f) => f.term), topic, topicConfidence, danger, dangerSource };
+  return { text, codedTerms: found.map((f) => f.term), topic, topicConfidence, danger, dangerSource, dangerWord };
 }

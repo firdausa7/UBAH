@@ -62,6 +62,21 @@ describe("staff pages", () => {
     expect(res.headers.location).toContain("error");
   });
 
+  it("shows a worker an unclear voice note, the language it sounded like, and the Beta label", async () => {
+    const g = girl(db, "0712000209");
+    await g.send("hi");
+    await g.send("4"); // Afaan Oromoo (beta)
+    await g.voice("laguun koo ture", { mockLanguage: "so", mockConfidence: 0.2 });
+    const [c] = await db.query(`SELECT id FROM cases WHERE reason = 'voice_unclear' ORDER BY id DESC LIMIT 1`);
+    const dada = await login("dada");
+    expect((await dada.get("/staff/inbox")).text).toContain("Audio unclear");
+    const view = (await dada.get(`/staff/cases/${c.id}`)).text;
+    expect(view).toContain("Afaan Oromoo (Beta)");
+    expect(view).toContain("Audio unclear: she was asked to try again or type");
+    expect(view).toContain("Sounded like Soomaali, she chose Afaan Oromoo (Beta)");
+    expect(view).toContain("20% sure");
+  });
+
   it("lets a Dada answer an urgent case, and the girl receives it", async () => {
     const g = girl(db, "0712000201");
     await g.send("hi");

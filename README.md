@@ -127,6 +127,8 @@ npm start
 ## How it is built
 
 - **Database migrations** — numbered files in `migrations/` (`0001_initial.sql`, `0002_…`). Each runs once, in its own transaction, under a Postgres advisory lock, so two instances starting together are safe. Applied files are checksummed: editing one stops the app; add a new numbered file instead. `npm run migrate -- --status` lists them.
+- **One repository, one build** — the server is in `src/`; the React app (login, girls' space `/me`, worker dashboard `/worker`, admin `/admin`) is in `web/` (Vite, React, Tailwind). `npm run build` builds `web/` into `web/dist` and type-checks the server; the server then serves the React app at those paths only, with its files under `/ui/`. The landing page (`/`), `/staff` and `/app` stay server-rendered. For frontend work run `npm run dev` here and `npm --prefix web run dev` (Vite proxies `/api` to port 3000).
+- **Languages** — one config per language in `src/languages/` (display name, speech-to-text and translation codes and providers, voice, danger-word list, status `enabled` | `beta` | `disabled`, `reviewedBy`). A disabled language is never offered; "Beta" is shown to workers only.
 - **Configuration** — every environment variable is validated with zod at startup (`src/config.ts`), with one clear message per problem.
 - **Staff security** — sessions are stored server-side (only a hash of the token), so log-out, deactivation and password changes take effect immediately. Every staff form carries a CSRF token. Login and two-step codes are rate-limited; 5 wrong passwords or codes lock an account for 15 minutes. Passwords need 12+ characters. Security headers (strict Content-Security-Policy, no framing, HSTS in production), request size limits, and `Cache-Control: no-store` on every staff page (phones are often shared).
 - **Audit log** — `/staff/audit` (admins) shows every login, case view, reply sent (by message id), pass check, label and admin action. The table is append-only (a database trigger refuses edits and deletes) and never stores message text or phone numbers.
@@ -207,6 +209,14 @@ Voice notes are transcribed by any OpenAI-compatible `/audio/transcriptions` end
 1. Record a **consented** test set: young women (18+) reading or speaking typical questions in each language, each with a signed consent form. Put the clips and a `manifest.jsonl` in `data/stt-eval/` (git-ignored; see the top of `src/ai/sttEval.ts` for the format, including `consent_ref`).
 2. Run `npm run eval:stt` against each candidate model. It refuses clips without documented consent and reports word and character error rates per language.
 3. Options: OpenAI Whisper (simplest, but the audio leaves Kenya: include it in the DPIA), a self-hosted Whisper server (e.g. faster-whisper with an OpenAI-compatible API), or Meta MMS, which covers Somali and Afaan Oromoo. Fine-tune on the consented set if error rates are high.
+
+Her chosen language is sent as a soft hint, never forced, because girls mix Somali, Kiswahili and English in one note. The model's own guess and its confidence are kept with each message; when they disagree with her choice the worker sees both. Below `STT_MIN_CONFIDENCE` (default 0.4), or with an empty transcript, she is gently asked to try again or type, and a worker gets an "Audio unclear" case (one at a time per girl). A danger word in an unclear note is still urgent.
+
+**Unverified:** Somali dialects (Maay as well as Maxaa tiri) and Afaan Oromoo have not been tested. Whisper has no Afaan Oromoo at all, so Oromo voice notes are treated as unclear until another provider is chosen; typed Oromo works.
+
+### Danger words
+
+Plain-text lists, one per language, in `data/danger/` (see the README there). Nurses and translators can edit them without touching code. Every message is checked against every list, because girls mix languages; any match is urgent. The Somali, Kiswahili and Oromo lists are DRAFTS written without native speakers and must be checked before the pilot.
 
 Until voice works well, Ubah always invites girls to type instead.
 

@@ -53,6 +53,7 @@ const EnvSchema = z.object({
   STT_BASE_URL: z.string().optional(),
   STT_API_KEY: z.string().optional(),
   STT_MODEL: z.string().default("whisper-1"),
+  STT_MIN_CONFIDENCE: z.coerce.number({ message: "must be a number" }).min(0).max(1).default(0.4),
 
   WHATSAPP_TOKEN: z.string().default(""),
   WHATSAPP_PHONE_NUMBER_ID: z.string().default(""),
@@ -165,7 +166,7 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     // AI: any OpenAI-compatible API (OpenAI, or an open-weight model served by vLLM / Ollama).
     llm: { baseUrl: e.LLM_BASE_URL, apiKey: e.LLM_API_KEY, model: e.LLM_MODEL },
     // Speech-to-text: any OpenAI-compatible /audio/transcriptions endpoint (Whisper, or a self-hosted MMS server).
-    stt: { baseUrl: e.STT_BASE_URL ?? e.LLM_BASE_URL, apiKey: e.STT_API_KEY ?? e.LLM_API_KEY, model: e.STT_MODEL },
+    stt: { baseUrl: e.STT_BASE_URL ?? e.LLM_BASE_URL, apiKey: e.STT_API_KEY ?? e.LLM_API_KEY, model: e.STT_MODEL, minConfidence: e.STT_MIN_CONFIDENCE },
 
     // WhatsApp Cloud API (Meta).
     whatsapp: {

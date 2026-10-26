@@ -1,0 +1,40 @@
+# Kiswahili danger words.
+# DRAFT: needs checking by a Kiswahili-speaking nurse and translator.
+
+[medical]
+# heavy bleeding / bleeding that won't stop
+damu nyingi
+damu haikomi
+damu haiachi
+# fainted
+*zimia
+# baby not moving
+mtoto hachezi
+# waters broke
+maji yamevunjika
+# can't breathe
+siwezi kupumua
+# convulsions
+kifafa
+degedege
+
+[safety]
+# raped / he raped me
+*bakwa
+*nibaka
+# beats me
+*nipiga
+# forced me
+*nilazimisha
+# FGM, forced marriage
+*keket*
+*nioza
+
+[selfharm]
+# kill myself
+*jiua
+# hurt myself
+*jidhuru
+# I don't want to live / I want to die
+sitaki kuishi
+nataka kufa

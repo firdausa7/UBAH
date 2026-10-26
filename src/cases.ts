@@ -9,7 +9,7 @@ import { log } from "./log.js";
 //   dada: Dada-level cases (safety, "talk to a person") and any case assigned to her
 // Medical danger signs and self-harm go to the nurse level at once; a Dada can escalate any case.
 
-export type CaseReason = "danger_medical" | "danger_safety" | "danger_selfharm" | "asked_for_person";
+export type CaseReason = "danger_medical" | "danger_safety" | "danger_selfharm" | "asked_for_person" | "voice_unclear";
 export const levelFor = (reason: string): "nurse" | "dada" => (reason === "danger_medical" || reason === "danger_selfharm" ? "nurse" : "dada");
 
 export const REASON_LABEL: Record<string, string> = {
@@ -17,6 +17,7 @@ export const REASON_LABEL: Record<string, string> = {
   danger_safety: "Safety concern",
   danger_selfharm: "Self-harm risk",
   asked_for_person: "Asked for a person",
+  voice_unclear: "Audio unclear",
 };
 
 export interface Viewer {

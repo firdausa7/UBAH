@@ -3,7 +3,10 @@
 // Translation studio by native speakers, approved by a reviewer and published; only published
 // translations are used (see src/caches.ts). Missing keys fall back to English.
 
-export const LANGUAGES: Record<string, string> = { so: "Soomaali", sw: "Kiswahili", en: "English", om: "Afaan Oromoo" };
+import { ALL_LANGUAGES, girlLanguages } from "./languages/index.js";
+
+// Display names of the languages girls can choose (from src/languages/; disabled ones are left out).
+export const LANGUAGES: Record<string, string> = Object.fromEntries(girlLanguages().map((l) => [l.code, l.name]));
 export const LANGUAGE_MENU: Array<[string, string]> = [["1", "so"], ["2", "sw"], ["3", "en"], ["4", "om"]];
 
 type Strings = Record<string, string>;
@@ -241,7 +244,8 @@ export const en: Strings = {
   wa_waiting_sms: "Ubah has a message for you on WhatsApp. Send any message there to read it.",
 };
 
-export const TRANSLATION_LANGUAGES = ["so", "sw", "om"] as const;
+// Languages with a translation step (all but English), including disabled ones so their work is kept.
+export const TRANSLATION_LANGUAGES: readonly string[] = ALL_LANGUAGES.filter((l) => l.translation).map((l) => l.code);
 
 let translations: Record<string, Strings> = { en };
 
