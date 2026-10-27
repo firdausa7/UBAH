@@ -47,6 +47,12 @@ export async function assignedWorkerId(db: Db, girlId: number): Promise<number |
   return a?.health_worker_id ?? null;
 }
 
+// A girl's real message (not a menu number or a command) that a worker could see, still unopened
+// after a day. Used by /admin and /health/ops so no girl is forgotten. ("m" is the messages row.)
+export const WAITING_OVER_A_DAY = `m.direction = 'in' AND m.status = 'new' AND m.created_at < now() - interval '24 hours'
+  AND (m.urgent OR (m.body ~ '[[:alpha:]]{3,}' AND upper(btrim(m.body)) NOT IN ('STOP','DELETE','HELP','MENU','DADA','SHARE','VOICE','PRIVATE')))
+  AND (m.urgent OR COALESCE((SELECT k.granted FROM consents k WHERE k.user_id = m.user_id AND k.scope = 'messages' ORDER BY k.id DESC LIMIT 1), FALSE))`;
+
 // A worker deactivated, or no longer a nurse or Dada: their girls go back to "not assigned", so an
 // admin sees them and reassigns them (and their messages never wait on someone who has left).
 export async function endAssignmentsOf(db: Db, staffId: number): Promise<number> {

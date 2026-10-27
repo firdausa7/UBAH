@@ -152,6 +152,7 @@ function Assignments() {
                   {w.role === 'nurse' ? 'Nurse' : 'Dada'}
                   {w.languages.length ? ` · ${w.languages.join(', ')}` : ''}
                 </span>
+                {w.waitingOverADay > 0 && <span className="mt-1 block text-[13px] font-medium text-urgent">{w.waitingOverADay} message{w.waitingOverADay === 1 ? '' : 's'} waiting over a day</span>}
               </span>
               <span className="font-serif text-[26px] font-semibold text-accent" aria-label={`${w.girls} girls`}>
                 {w.girls}

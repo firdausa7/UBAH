@@ -81,3 +81,38 @@ describe("assigning unassigned girls by language", () => {
     expect((await db.query(`SELECT count(*)::int AS n FROM assignments WHERE health_worker_id = $1 AND ended_at IS NULL`, [nurse.id]))[0].n).toBe(0);
   });
 });
+
+describe("no girl forgotten: messages waiting over a day", () => {
+  it("counts a girl's unopened messages per worker, and girls with no worker, without paging anyone", async () => {
+    const { opsStatus, opsPrometheus } = await import("../src/ops.js");
+    await db.query(`DELETE FROM messages`);
+    const [nurse] = await db.query(`SELECT id FROM staff WHERE login = 'nurse'`);
+    const waitingOf = async () => {
+      const ws = (await (await signedInAdmin()).agent.get("/api/admin/workers")).body.workers;
+      return ws.find((w: any) => w.id === nurse.id).waitingOverADay;
+    };
+    const before = await opsStatus(db);
+
+    const assigned = await girlIn("so", "0712950020");
+    await db.query(`UPDATE assignments SET ended_at = now() WHERE girl_id = $1 AND ended_at IS NULL`, [assigned]);
+    await db.query(`INSERT INTO assignments (health_worker_id, girl_id) VALUES ($1,$2)`, [nurse.id, assigned]);
+    await db.query(`INSERT INTO consents (user_id, scope, granted) VALUES ($1,'messages',TRUE)`, [assigned]);
+    const old = `now() - interval '2 days'`;
+    await db.query(`INSERT INTO messages (user_id, direction, channel, body, created_at) VALUES ($1,'in','web','Caadadaydu way soo daahday',${old}), ($1,'in','web','DADA',${old}), ($1,'in','web','Hello again today',now())`, [assigned]);
+
+    const unassigned = await girlIn("sw", "0712950021");
+    await db.query(`INSERT INTO consents (user_id, scope, granted) VALUES ($1,'messages',TRUE)`, [unassigned]);
+    await db.query(`INSERT INTO messages (user_id, direction, channel, body, created_at) VALUES ($1,'in','web','Hedhi yangu imechelewa',${old})`, [unassigned]);
+
+    expect(await waitingOf()).toBe(1); // not the command, not today's
+    const s = await opsStatus(db);
+    expect(s.messagesWaiting24h).toBe(before.messagesWaiting24h + 1);
+    expect(s.girlsUnassignedWaiting24h).toBe(before.girlsUnassignedWaiting24h + 1);
+    expect(s.ok).toBe(before.ok); // a daily check, never a page at night
+    expect(opsPrometheus(s)).toMatch(/ubah_messages_waiting_24h 1/);
+
+    // Opening it (status "open") takes it off the list.
+    await db.query(`UPDATE messages SET status = 'open' WHERE user_id = $1`, [assigned]);
+    expect(await waitingOf()).toBe(0);
+  });
+});

@@ -1,4 +1,5 @@
 import type { Db } from "./db.js";
+import { ACTIVE_ASSIGNMENT, WAITING_OVER_A_DAY } from "./auth/access.js";
 import { config } from "./config.js";
 import { alertStaff } from "./channels/outbound.js";
 import { caseEvent } from "./cases.js";
@@ -17,6 +18,9 @@ export interface OpsStatus {
   jobsQueuedOverdue10m: number; // jobs that should have run 10+ minutes ago (worker stopped?)
   inboundStuck: number; // inbound messages not handled after 5 minutes
   payoutsUnknown: number; // M-Pesa payments sent with no answer for an hour
+  // Daily attention (not "needs a person now": these don't make ok false):
+  messagesWaiting24h: number; // girls' messages her worker hasn't opened for a day
+  girlsUnassignedWaiting24h: number; // girls with no worker and a message waiting a day: assign them
 }
 
 export async function opsStatus(db: Db): Promise<OpsStatus> {
@@ -29,7 +33,9 @@ export async function opsStatus(db: Db): Promise<OpsStatus> {
        (SELECT count(*)::int FROM jobs WHERE status = 'dead' AND finished_at > now() - interval '24 hours') AS dead,
        (SELECT count(*)::int FROM jobs WHERE status = 'queued' AND run_at < now() - interval '10 minutes') AS overdue,
        (SELECT count(*)::int FROM inbound_messages WHERE processed_at IS NULL AND received_at < now() - interval '5 minutes') AS inbound,
-       (SELECT count(*)::int FROM dada_payouts WHERE status = 'processing' AND updated_at < now() - interval '1 hour') AS payouts`,
+       (SELECT count(*)::int FROM dada_payouts WHERE status = 'processing' AND updated_at < now() - interval '1 hour') AS payouts,
+       (SELECT count(*)::int FROM messages m WHERE ${WAITING_OVER_A_DAY} AND EXISTS (SELECT 1 FROM assignments a WHERE a.girl_id = m.user_id AND ${ACTIVE_ASSIGNMENT})) AS waiting,
+       (SELECT count(DISTINCT m.user_id)::int FROM messages m WHERE ${WAITING_OVER_A_DAY} AND NOT EXISTS (SELECT 1 FROM assignments a WHERE a.girl_id = m.user_id AND ${ACTIVE_ASSIGNMENT})) AS unassigned`,
   );
   const s: OpsStatus = {
     ok: false,
@@ -41,6 +47,8 @@ export async function opsStatus(db: Db): Promise<OpsStatus> {
     jobsQueuedOverdue10m: r.overdue,
     inboundStuck: r.inbound,
     payoutsUnknown: r.payouts,
+    messagesWaiting24h: r.waiting,
+    girlsUnassignedWaiting24h: r.unassigned,
   };
   s.ok = s.urgentUnanswered15m === 0 && s.staffAlertsFailedNow === 0 && s.jobsQueuedOverdue10m === 0 && s.inboundStuck === 0;
   return s;
@@ -60,6 +68,8 @@ export function opsPrometheus(s: OpsStatus): string {
       line("jobs_overdue_10m", "Jobs overdue by 10+ minutes (is the worker running?)", s.jobsQueuedOverdue10m),
       line("inbound_stuck", "Inbound messages not handled after 5 minutes", s.inboundStuck),
       line("payouts_unknown", "M-Pesa payments with no answer for an hour", s.payoutsUnknown),
+      line("messages_waiting_24h", "Girls' messages her health worker hasn't opened for a day", s.messagesWaiting24h),
+      line("girls_unassigned_waiting_24h", "Girls with no health worker and a message waiting a day", s.girlsUnassignedWaiting24h),
     ].join("\n") + "\n"
   );
 }

@@ -3,7 +3,7 @@ import type { Db } from "../db.js";
 import { auditReq } from "../audit.js";
 import { languageConfig, workerLabel } from "../languages/index.js";
 import { requireRole, workerOf } from "../auth/roles.js";
-import { ACTIVE_ASSIGNMENT, logAccess } from "../auth/access.js";
+import { ACTIVE_ASSIGNMENT, logAccess, WAITING_OVER_A_DAY } from "../auth/access.js";
 
 // /api/admin: list girls and health workers, and assign each girl to one worker.
 // Admins see who a girl is assigned to, never her messages.
@@ -37,10 +37,12 @@ export function adminApi(db: Db): Router {
   r.get("/workers", async (_req, res) => {
     const rows = await db.query<any>(
       `SELECT s.id, s.name, s.role, s.languages,
-              (SELECT count(*)::int FROM assignments a WHERE a.health_worker_id = s.id AND a.ended_at IS NULL) AS girls
+              (SELECT count(*)::int FROM assignments a WHERE a.health_worker_id = s.id AND a.ended_at IS NULL) AS girls,
+              (SELECT count(*)::int FROM messages m JOIN assignments a ON a.girl_id = m.user_id AND a.health_worker_id = s.id AND a.ended_at IS NULL
+                WHERE ${WAITING_OVER_A_DAY}) AS waiting
          FROM staff s WHERE s.active AND s.role IN ('nurse','dada') ORDER BY s.name`,
     );
-    res.json({ workers: rows.map((w) => ({ id: w.id, name: w.name, role: w.role, languages: w.languages ?? [], girls: w.girls })) });
+    res.json({ workers: rows.map((w) => ({ id: w.id, name: w.name, role: w.role, languages: w.languages ?? [], girls: w.girls, waitingOverADay: w.waiting })) });
   });
 
   r.put("/girls/:id/assignment", async (req, res) => {
