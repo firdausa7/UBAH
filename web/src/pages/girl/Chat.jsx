@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { api, ApiError } from '../../lib/api.js'
-import { enqueue, flushQueue, queued } from '../../lib/offline.js'
+import { enqueue, flushQueue, messageId, queued } from '../../lib/offline.js'
 import { useStrings } from '../../lib/strings.jsx'
 
 const POLL_MS = 8000
@@ -33,7 +33,7 @@ export default function Chat() {
 
   // Messages typed offline go out, in order, as soon as she is back.
   const flush = useCallback(async () => {
-    const left = await flushQueue(async (text) => merge((await api.post(`/me/messages?after=${lastRef.current}`, { text })).messages))
+    const left = await flushQueue(async (m) => merge((await api.post(`/me/messages?after=${lastRef.current}`, { text: m.text, id: m.id })).messages))
     setWaiting(left)
   }, [merge])
 
@@ -88,23 +88,24 @@ export default function Chat() {
   // Typed, tapped (a menu button, an example, "Talk to a person"): all the same message to Ubah.
   async function sendMessage(body) {
     if (!body) return true
+    const id = messageId()
     if (!online) {
-      enqueue(body)
+      enqueue(body, id)
       setWaiting(queued())
       return true
     }
     setBusy(true)
     setError('')
     try {
-      merge((await api.post(`/me/messages?after=${last}`, { text: body })).messages)
+      merge((await api.post(`/me/messages?after=${last}`, { text: body, id })).messages)
       return true
     } catch (err) {
       if (err instanceof ApiError) {
         setError(t('web_error'))
         return false
       }
-      // The connection dropped: keep it for later.
-      enqueue(body)
+      // The connection dropped: keep it for later, with the same id (it may have arrived already).
+      enqueue(body, id)
       setWaiting(queued())
       setOnline(false)
       return true
@@ -147,7 +148,7 @@ export default function Chat() {
           <ol className="mt-3 flex flex-col gap-3" aria-label={t('app_offline')}>
             {waiting.map((w, i) => (
               <li key={i} className="max-w-[85%] self-end rounded-[20px_20px_4px_20px] bg-white/60 px-4 py-3 text-[16px] text-muted border border-dashed border-line">
-                {w}
+                {w.text}
               </li>
             ))}
           </ol>
@@ -177,7 +178,7 @@ export default function Chat() {
             </button>
           </form>
         ) : (
-          <Recorder busy={busy || !online} onAudio={(blob) => send(() => api.upload(`/me/voice?after=${last}`, blob))} />
+          <Recorder busy={busy || !online} onAudio={(blob) => send(() => api.upload(`/me/voice?after=${last}`, blob, messageId()))} />
         )}
         <p className="mt-3 flex flex-wrap items-center justify-center gap-x-5 gap-y-1">
           <button type="button" className="text-[15px] font-medium text-accent underline underline-offset-4" onClick={() => setTyping(!typing)}>

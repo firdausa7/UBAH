@@ -9,10 +9,11 @@ export class ApiError extends Error {
   }
 }
 
-async function call(method, path, body, { raw, poll } = {}) {
+async function call(method, path, body, { raw, poll, id } = {}) {
   const headers = { accept: 'application/json' }
   // A background check (new replies) doesn't count as her using the app, so the PIN lock still comes.
   if (poll) headers['x-ubah-poll'] = '1'
+  if (id) headers['x-ubah-id'] = id // a voice note's id, so a retry isn't handled twice
   if (method !== 'GET') headers['x-ubah'] = '1'
   let payload
   if (raw) {
@@ -37,5 +38,5 @@ export const api = {
   put: (path, body) => call('PUT', path, body),
   patch: (path, body) => call('PATCH', path, body),
   del: (path, body) => call('DELETE', path, body),
-  upload: (path, blob) => call('POST', path, undefined, { raw: blob }),
+  upload: (path, blob, id) => call('POST', path, undefined, { raw: blob, id }),
 }

@@ -250,6 +250,23 @@ describe("the girl's own messages API", () => {
     expect(reply.text).toContain("1 Rest");
   });
 
+  it("handles a resent message once (same id), and different messages each time", async () => {
+    const { a, user } = await webGirl("0712600023", "en");
+    const count = async () => (await db.query(`SELECT count(*)::int AS n FROM messages WHERE user_id = $1 AND direction = 'in'`, [user.id]))[0].n;
+    const send = (text: string, id?: string) => a.post("/api/me/messages").set(H).send(id ? { text, id } : { text });
+    expect((await send("is it normal to have pain during my period", "3f1c2a9e-0001")).status).toBe(200);
+    expect((await send("is it normal to have pain during my period", "3f1c2a9e-0001")).status).toBe(200); // her phone retried
+    expect(await count()).toBe(1);
+    await send("is it normal to have pain during my period", "3f1c2a9e-0002"); // she really asked again
+    expect(await count()).toBe(2);
+    await send("one more without an id"); // an older phone
+    expect(await count()).toBe(3);
+    expect((await send("hi", "bad id!")).status).toBe(400);
+    // A voice note retried with the same id is handled once too.
+    for (let i = 0; i < 2; i++) await a.post("/api/me/voice").set(H).set("x-ubah-id", "3f1c2a9e-voice").set("content-type", "audio/webm").send(Buffer.from("fake"));
+    expect((await db.query(`SELECT count(*)::int AS n FROM messages WHERE user_id = $1 AND kind = 'voice'`, [user.id]))[0].n).toBe(1);
+  });
+
   it("accepts a voice note; with no words heard she is asked to try again", async () => {
     const { a } = await webGirl("0712600021", "so");
     const res = await a.post("/api/me/voice").set(H).set("content-type", "audio/webm").send(Buffer.from("fake audio"));
@@ -419,6 +436,20 @@ describe("answers for a girl writing in Somali", () => {
     expect(answer).toContain(right.body);
     expect(answer).not.toMatch(/prevent pregnancy/i); // the old mistake: Somali "way" matched "ways to prevent pregnancy"
     void user;
+  });
+
+  it("never reads her Somali as English when only the mock translation is there (no key, e.g. the test version)", async () => {
+    const { mockTranslation } = await import("../src/providers/translation.js");
+    useTranslationProvider(mockTranslation);
+    try {
+      const { a } = await webGirl("0712600062", "so");
+      const res = await a.post("/api/me/messages").set(H).send({ text: "Caadadaydu way soo daahday" });
+      const answer = res.body.messages.filter((m: any) => m.from === "ubah").map((m: any) => m.text).join("\n");
+      expect(answer).not.toMatch(/prevent pregnancy/i); // found live: "way" read as "ways to prevent pregnancy"
+      expect(answer).toMatch(/I'm not sure about that/);
+    } finally {
+      useTranslationProvider(dictionary);
+    }
   });
 
   it("offers a person instead of guessing when the message couldn't be translated", async () => {

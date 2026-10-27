@@ -164,3 +164,11 @@ describe("the numbered language menu on SMS, WhatsApp and USSD", () => {
     }
   });
 });
+
+describe("telling English from other languages (only when there is no real translation)", () => {
+  it("recognises English sentences, not Somali, Kiswahili or Oromo ones", async () => {
+    const { looksEnglish } = await import("../src/ml/text.js");
+    for (const en of ["my period pain is very bad", "how do i use a pad", "is it normal to have pain during my period"]) expect(looksEnglish(en), en).toBe(true);
+    for (const other of ["Caadadaydu way soo daahday", "Dhiig badan ayaa iga imanaya", "Hedhi yangu imechelewa", "Laguun koo ture", "pad", ""]) expect(looksEnglish(other), other).toBe(false);
+  });
+});

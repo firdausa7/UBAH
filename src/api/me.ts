@@ -141,12 +141,36 @@ export function meApi(db: Db): Router {
     res.json({ messages: await conversation(db, girlOf(req).id, Math.max(0, Number(req.query.after) || 0)) });
   });
 
+  // A resent message (her connection dropped after we had it) is handled once: the phone gives each
+  // message an id and reuses it when it retries, like WhatsApp and Africa's Talking do.
+  async function firstTime(girlId: number, raw: unknown): Promise<boolean | "invalid"> {
+    if (raw === undefined || raw === null || raw === "") return true; // older clients: no id
+    const id = String(raw);
+    if (!/^[A-Za-z0-9-]{8,64}$/.test(id)) return "invalid";
+    const rows = await db.query(
+      `INSERT INTO inbound_messages (provider, provider_id, processed_at) VALUES ('web', $1, now()) ON CONFLICT (provider, provider_id) DO NOTHING RETURNING id`,
+      [`${girlId}:${id}`],
+    );
+    return rows.length > 0;
+  }
+  // If handling fails, release the id, so her phone's retry is handled instead of skipped.
+  async function handleOnce(girlId: number, raw: unknown, handle: () => Promise<void>) {
+    try {
+      await handle();
+    } catch (err) {
+      if (raw) await db.query(`DELETE FROM inbound_messages WHERE provider = 'web' AND provider_id = $1`, [`${girlId}:${String(raw)}`]);
+      throw err;
+    }
+  }
+
   // Text, through the same pipeline as WhatsApp and SMS.
   r.post("/messages", sendLimit, async (req, res) => {
     const g = girlOf(req);
     const text = String(req.body?.text ?? "").trim().slice(0, 1000);
     if (!text) return res.status(400).json({ error: "empty" });
-    await handleIncoming(db, { channel: "web", from: "", userId: g.id, text });
+    const first = await firstTime(g.id, req.body?.id);
+    if (first === "invalid") return res.status(400).json({ error: "id" });
+    if (first) await handleOnce(g.id, req.body?.id, () => handleIncoming(db, { channel: "web", from: "", userId: g.id, text }));
     res.json({ messages: await conversation(db, g.id, Math.max(0, Number(req.query.after) || 0)) });
   });
 
@@ -156,7 +180,9 @@ export function meApi(db: Db): Router {
     const audio = req.body as Buffer;
     if (!Buffer.isBuffer(audio) || audio.length === 0) return res.status(400).json({ error: "empty" });
     const mimeType = String(req.headers["content-type"] ?? "audio/webm").split(";")[0];
-    await handleIncoming(db, { channel: "web", from: "", userId: g.id, voice: { audio, mimeType } });
+    const first = await firstTime(g.id, req.headers["x-ubah-id"]);
+    if (first === "invalid") return res.status(400).json({ error: "id" });
+    if (first) await handleOnce(g.id, req.headers["x-ubah-id"], () => handleIncoming(db, { channel: "web", from: "", userId: g.id, voice: { audio, mimeType } }));
     res.json({ messages: await conversation(db, g.id, Math.max(0, Number(req.query.after) || 0)) });
   });
 

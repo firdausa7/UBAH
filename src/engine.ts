@@ -4,6 +4,7 @@ import { encryptPhone, hashPhone, newAnonId } from "./privacy.js";
 import { t, languageMenu, hasTranslation } from "./i18n.js";
 import { analyse, analyseBoth, type Analysis } from "./ml/models.js";
 import { expandCodedTerms } from "./ml/glossary.js";
+import { looksEnglish } from "./ml/text.js";
 import { search, localize } from "./content/content.js";
 import { nearestClinics, matchPlace, type ClinicPlace } from "./location.js";
 import { transcribe, type MockVoice } from "./providers/speech.js";
@@ -259,7 +260,12 @@ async function handleMessage(db: Db, msg: Incoming): Promise<void> {
     return issueAndSend(db, user, picks);
   }
 
-  return answerQuestion(db, user, a, text, meta.english?.ok && meta.english.provider !== "none" ? meta.english.text : null);
+  // English answers are found through a real translation. Without one (no key, e.g. the online test
+  // version) her own words are used only if they look like English: the mock just labels her words,
+  // and Somali read as English goes wrong ("way" matched "ways to prevent pregnancy").
+  const realEnglish = meta.english?.ok && meta.english.provider !== "none" && meta.english.provider !== "mock" ? meta.english.text : null;
+  const searchEnglish = realEnglish ?? (looksEnglish(text) ? text : null);
+  return answerQuestion(db, user, a, text, searchEnglish);
 }
 
 interface InboundMeta {

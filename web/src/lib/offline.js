@@ -1,3 +1,5 @@
+import { ApiError } from './api.js'
+
 // Offline support for the girls' space. What is hers never touches the phone's storage:
 // a message typed offline waits in this browser tab only (sessionStorage) and is sent when she is back.
 
@@ -31,11 +33,13 @@ const write = (store, key, value) => {
   }
 }
 
-export const queued = () => JSON.parse(read(sessionStorage, QUEUE) || '[]')
-export const enqueue = (text) => write(sessionStorage, QUEUE, JSON.stringify([...queued(), text]))
-export const setQueue = (items) => write(sessionStorage, QUEUE, items.length ? JSON.stringify(items) : null)
+// Each message has an id from the moment she writes it; every retry reuses it, so the server
+// handles it once even if an earlier try had reached it before the connection dropped.
+export const messageId = () => (crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2, 12)}`)
 
-import { ApiError } from './api.js'
+export const queued = () => JSON.parse(read(sessionStorage, QUEUE) || '[]').map((m) => (typeof m === 'string' ? { id: messageId(), text: m } : m))
+export const enqueue = (text, id = messageId()) => write(sessionStorage, QUEUE, JSON.stringify([...queued(), { id, text }]))
+export const setQueue = (items) => write(sessionStorage, QUEUE, items.length ? JSON.stringify(items) : null)
 
 // Only a 400 means the server will never take this message; anything else (offline, locked, too many
 // at once, a server problem) means "try again later".

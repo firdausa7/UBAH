@@ -62,6 +62,16 @@ export function tokenize(text: string, lang: Lang = "en"): string[] {
     .map(stemEn);
 }
 
+// Is this (mostly) English? At least two common English function words making up a quarter of the
+// words or more. Used only when no real translation exists, to decide whether her own words may be
+// matched against English content ("my period pain is very bad" yes; "Caadadaydu way soo daahday" no).
+export function looksEnglish(text: string): boolean {
+  const ws = words(text, false);
+  if (ws.length === 0) return false;
+  const common = ws.filter((w) => EN_STOP.has(w)).length;
+  return common >= 2 && common / ws.length >= 0.25;
+}
+
 // Unigrams + bigrams, used as classifier features.
 export function features(text: string, lang: Lang = "en"): string[] {
   const toks = tokenize(text, lang);

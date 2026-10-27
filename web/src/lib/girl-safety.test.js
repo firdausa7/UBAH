@@ -16,7 +16,7 @@ describe('messages typed offline', () => {
     enqueue('first')
     enqueue('second')
     const sent = []
-    expect(await flushQueue(async (t) => sent.push(t), () => false)).toEqual([])
+    expect(await flushQueue(async (m) => sent.push(m.text), () => false)).toEqual([])
     expect(sent).toEqual(['first', 'second'])
   })
 
@@ -26,7 +26,7 @@ describe('messages typed offline', () => {
       enqueue('a question')
       enqueue('another')
       const left = await flushQueue(async () => Promise.reject(error))
-      expect(left, String(error.code ?? error.message)).toEqual(['a question', 'another'])
+      expect(left.map((m) => m.text), String(error.code ?? error.message)).toEqual(['a question', 'another'])
     }
   })
 
@@ -35,10 +35,17 @@ describe('messages typed offline', () => {
     enqueue('fine')
     const sent = []
     const left = await flushQueue(
-      async (t) => (t === 'refused' ? Promise.reject(new ApiError(400, 'empty')) : sent.push(t)),
+      async (m) => (m.text === 'refused' ? Promise.reject(new ApiError(400, 'empty')) : sent.push(m.text)),
     )
     expect(left).toEqual([])
     expect(sent).toEqual(['fine'])
+  })
+
+  it('keep the id they were given, so a retry is recognised as the same message', async () => {
+    enqueue('typed offline', 'id-from-first-try')
+    const ids = []
+    await flushQueue(async (m) => ids.push(m.id))
+    expect(ids).toEqual(['id-from-first-try'])
   })
 
   it('live only in this tab, never in the phone storage', () => {
