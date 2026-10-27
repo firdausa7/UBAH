@@ -4,8 +4,8 @@ import { audit } from "../audit.js";
 import { DUMMY_PASSWORD_HASH, verifyPassword } from "../privacy.js";
 import { createSession, endSession, mfaMethod, readSession, upgradeSession } from "../web/auth.js";
 import { checkSmsCode, checkTotp, isLocked, loadStaff, registerFailure, sendLoginCode, useRecoveryCode } from "../web/login.js";
-import { appRoleOf, createGirlSession, endGirlSession, HOME, readActor } from "../auth/roles.js";
-import { checkPin, sendGirlCode, verifyCodeAndSetPin } from "../auth/girls.js";
+import { appRoleOf, createGirlSession, endGirlSession, HOME, readActor, readGirlSession, unlockGirlSession } from "../auth/roles.js";
+import { checkPin, sendGirlCode, verifyCodeAndSetPin, verifyGirlPin } from "../auth/girls.js";
 import { languageConfig } from "../languages/index.js";
 
 // /api/auth: one login for everyone. Girls: phone + SMS code (once) + PIN. Staff: login + password,
@@ -18,7 +18,7 @@ export function authApi(db: Db, opts: { loginLimiter: RequestHandler }): Router 
   r.get("/session", async (req, res) => {
     const a = await readActor(db, req);
     if (!a) return res.status(401).json({ error: "not_signed_in" });
-    if (a.role === "girl") return res.json({ role: "girl", home: HOME.girl, language: a.girl.language, anonId: a.girl.anon_id });
+    if (a.role === "girl") return res.json({ role: "girl", home: HOME.girl, language: a.girl.language, locked: a.locked, ...(a.locked ? {} : { anonId: a.girl.anon_id }) });
     res.json({ role: a.role, home: HOME[a.role], name: a.staff.name });
   });
 
@@ -46,6 +46,22 @@ export function authApi(db: Db, opts: { loginLimiter: RequestHandler }): Router 
     if (u === "locked") return res.status(423).json({ error: "locked" });
     await createGirlSession(db, res, u.id);
     res.json({ role: "girl", home: HOME.girl, language: u.language });
+  });
+
+  // Her session locked itself (unused for a while): her PIN opens it again. Too many wrong PINs end
+  // the session, and she signs in again with an SMS code.
+  r.post("/girl/unlock", opts.loginLimiter, async (req, res) => {
+    const g = await readGirlSession(db, req);
+    if (!g) return res.status(401).json({ error: "not_signed_in" });
+    const [u] = await db.query(`SELECT * FROM users WHERE id = $1`, [g.user.id]);
+    const r = await verifyGirlPin(db, u, str(req.body?.pin, 10));
+    if (r === "wrong") return res.status(401).json({ error: "wrong" });
+    if (r === "locked") {
+      await endGirlSession(db, req, res);
+      return res.status(423).json({ error: "locked" });
+    }
+    await unlockGirlSession(db, g.tokenHash);
+    res.json({ ok: true });
   });
 
   // ---- Staff (same accounts, sessions and two-step login as /staff/login) ----

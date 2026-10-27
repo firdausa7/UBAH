@@ -85,6 +85,11 @@ export async function verifyCodeAndSetPin(db: Db, phone: string, code: string, p
 // Phone + PIN. The same answer for an unknown phone and a wrong PIN, and the same time taken.
 export async function checkPin(db: Db, phone: string, pin: string): Promise<UserRow | "wrong" | "locked"> {
   const [u] = validPhone(phone) ? await db.query<UserRow & { pin_hash: string | null; pin_locked_until: string | null }>(`SELECT * FROM users WHERE phone_hash = $1`, [hashPhone(phone)]) : [];
+  return verifyGirlPin(db, u, pin);
+}
+
+// Her PIN, with the same count of wrong tries whether she is signing in or unlocking.
+export async function verifyGirlPin(db: Db, u: (UserRow & { pin_hash?: string | null; pin_locked_until?: string | null }) | undefined, pin: string): Promise<UserRow | "wrong" | "locked"> {
   if (!u || !u.pin_hash) {
     verifyPassword(pin, DUMMY_PASSWORD_HASH);
     return "wrong";

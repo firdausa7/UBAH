@@ -59,7 +59,7 @@ export default function Chat() {
     let live = true
     const pull = () =>
       api
-        .get(`/me/messages?after=${lastRef.current}`)
+        .poll(`/me/messages?after=${lastRef.current}`)
         .then((d) => {
           if (!live) return
           setOnline(true)

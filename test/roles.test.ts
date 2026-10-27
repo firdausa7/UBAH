@@ -95,6 +95,43 @@ describe("girls sign in with phone, SMS code and PIN", () => {
   });
 });
 
+describe("the PIN lock on a shared phone", () => {
+  const lockNow = (userId: number) => db.query(`UPDATE girl_sessions SET unlocked_until = now() - interval '1 minute' WHERE user_id = $1`, [userId]);
+
+  it("locks after a while unused: nothing of hers is sent until her PIN is entered", async () => {
+    const { a, user } = await webGirl("0712555040", "2580");
+    expect((await a.get("/api/me")).status).toBe(200);
+    await lockNow(user.id);
+    expect((await a.get("/api/me")).body).toEqual({ error: "pin_needed" });
+    expect((await a.get("/api/me/messages")).status).toBe(423);
+    const s = (await a.get("/api/auth/session")).body;
+    expect(s).toMatchObject({ role: "girl", locked: true });
+    expect(s.anonId).toBeUndefined();
+    expect((await post(a, "/api/auth/girl/unlock", { pin: "1111" })).status).toBe(401);
+    expect((await post(a, "/api/auth/girl/unlock", { pin: "2580" })).body).toEqual({ ok: true });
+    expect((await a.get("/api/me")).status).toBe(200);
+  });
+
+  it("stays unlocked while she uses it, but the background check for replies doesn't count", async () => {
+    const { a, user } = await webGirl("0712555041", "2580");
+    const until = async () => new Date((await db.query(`SELECT unlocked_until FROM girl_sessions WHERE user_id = $1`, [user.id]))[0].unlocked_until).getTime();
+    await db.query(`UPDATE girl_sessions SET unlocked_until = now() + interval '1 minute' WHERE user_id = $1`, [user.id]);
+    await a.get("/api/me/messages").set("x-ubah-poll", "1");
+    expect(await until()).toBeLessThan(Date.now() + 2 * 60_000);
+    await a.get("/api/me");
+    expect(await until()).toBeGreaterThan(Date.now() + 14 * 60_000);
+  });
+
+  it("ends the session after too many wrong PINs; she signs in again with an SMS code", async () => {
+    const { a, user } = await webGirl("0712555042", "2580");
+    await lockNow(user.id);
+    let last;
+    for (let i = 0; i < 5; i++) last = await post(a, "/api/auth/girl/unlock", { pin: "0000" });
+    expect([last!.status, last!.body]).toEqual([423, { error: "locked" }]);
+    expect((await a.get("/api/me")).status).toBe(401);
+  });
+});
+
 describe("staff sign in through the same login", () => {
   it("nurse: password, then authenticator code, then /worker", async () => {
     await staff("nurse"); // sets up the authenticator the first time

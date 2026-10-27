@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Link, NavLink, Route, Routes } from 'react-router'
-import { api } from '../../lib/api.js'
+import { api, ApiError } from '../../lib/api.js'
+import LockScreen from './LockScreen.jsx'
 import { Waiting } from '../../lib/session.jsx'
 import { StringsProvider, savedLanguage, useStrings } from '../../lib/strings.jsx'
 import { registerOffline } from '../../lib/offline.js'
@@ -15,11 +16,31 @@ import Learn from './Learn.jsx'
 // The girls' space. Light on purpose: cheap Android phones, slow data. Every word is in her language.
 export default function GirlApp() {
   const [me, setMe] = useState(null)
-  const reload = useCallback(() => api.get('/me').then(setMe), [])
+  const [locked, setLocked] = useState(false)
+  const reload = useCallback(
+    () =>
+      api
+        .get('/me')
+        .then((d) => (setMe(d), setLocked(false)))
+        .catch((e) => {
+          if (e instanceof ApiError && e.code === 'pin_needed') return setLocked(true)
+          setMe({ language: savedLanguage() || 'en', consents: {}, languages: [], offline: true })
+        }),
+    [],
+  )
   useEffect(() => {
     registerOffline()
-    reload().catch(() => setMe({ language: savedLanguage() || 'en', consents: {}, languages: [], offline: true }))
+    reload()
+    const lock = () => setLocked(true)
+    window.addEventListener('ubah:locked', lock)
+    return () => window.removeEventListener('ubah:locked', lock)
   }, [reload])
+  if (locked)
+    return (
+      <StringsProvider lang={me?.language || savedLanguage()}>
+        <LockScreen onUnlocked={reload} />
+      </StringsProvider>
+    )
   if (!me) return <Waiting />
   return (
     <StringsProvider lang={me.language}>
