@@ -127,13 +127,17 @@ export interface Hit {
   score: number;
 }
 
-export function search(query: string, opts: { topic?: string; limit?: number; lang?: string } = {}): Hit[] {
+export function search(query: string, opts: { topic?: string; limit?: number; lang?: string; english?: string | null } = {}): Hit[] {
   // Her language's published versions and the English ones, each matched in its own language.
-  const langs = [...new Set([opts.lang ?? "en", "en"])];
+  // English content is matched against the English translation of her message, never against her
+  // own words read as English (the Somali "way" is not the English "way"). No translation: no match.
+  const lang = opts.lang ?? "en";
+  const langs = [...new Set([lang, "en"])];
   const docs = serving.filter((c) => langs.includes(c.language));
   const toksOf = (d: ContentItem) => tokenize(`${d.title} ${d.keywords.join(" ")} ${d.keywords.join(" ")} ${d.body}`, d.language);
   const docTokens = docs.map(toksOf);
-  const qByLang = new Map(langs.map((l) => [l, tokenize(query, l)]));
+  const englishQuery = lang === "en" ? query : (opts.english ?? "");
+  const qByLang = new Map(langs.map((l) => [l, tokenize(l === "en" ? englishQuery : query, l)]));
   if ([...qByLang.values()].every((q) => q.length === 0)) return [];
   // Collection statistics over the whole library in every language (each document tokenized in its
   // own language), so scores stay stable while only a few topics are published in a language.

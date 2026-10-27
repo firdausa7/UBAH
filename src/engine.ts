@@ -3,6 +3,7 @@ import { config } from "./config.js";
 import { encryptPhone, hashPhone, newAnonId } from "./privacy.js";
 import { t, LANGUAGE_MENU, hasTranslation } from "./i18n.js";
 import { analyse, type Analysis } from "./ml/models.js";
+import { expandCodedTerms } from "./ml/glossary.js";
 import { search, localize } from "./content/content.js";
 import { nearestClinics, matchPlace, type ClinicPlace } from "./location.js";
 import { transcribe, type MockVoice } from "./providers/speech.js";
@@ -211,7 +212,7 @@ export async function handleIncoming(db: Db, msg: Incoming): Promise<void> {
     return issueAndSend(db, user, picks);
   }
 
-  return answerQuestion(db, user, a, text);
+  return answerQuestion(db, user, a, text, meta.english?.ok && meta.english.provider !== "none" ? meta.english.text : null);
 }
 
 interface InboundMeta {
@@ -268,9 +269,11 @@ async function flagUnclearVoice(db: Db, user: UserRow, partial: string) {
   await openCase(db, user, "voice_unclear", false, partial ? `Heard (unsure): ${partial}` : "Voice note could not be transcribed");
 }
 
-async function answerQuestion(db: Db, user: UserRow, a: Analysis, _question: string) {
+async function answerQuestion(db: Db, user: UserRow, a: Analysis, _question: string, english: string | null) {
   const lang = user.language ?? "en";
-  const hits = search(a.text, { topic: a.topic ?? undefined, lang });
+  // The topic models are trained on English: for her words in another language, read the translation.
+  const topic = lang !== "en" && english ? (analyse(english, "en").topic ?? a.topic) : a.topic;
+  const hits = search(a.text, { topic: topic ?? undefined, lang, english: english ? expandCodedTerms(english).text : null });
   if (hits.length === 0 || hits[0].score < 1) {
     await setState(db, user, { step: "after_answer", lastServices: [], lastTopic: a.topic });
     return say(db, user, "dont_know");

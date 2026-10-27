@@ -268,6 +268,26 @@ describe("the worker inbox", () => {
   });
 });
 
+describe("answers for a girl writing in Somali", () => {
+  it("finds the right approved answer through the English translation, never by reading Somali as English", async () => {
+    const { a, user } = await webGirl("0712600060", "so");
+    const res = await a.post("/api/me/messages").set(H).send({ text: "Caadadaydu way soo daahday" });
+    const answer = res.body.messages.filter((m: any) => m.from === "ubah").map((m: any) => m.text).join("\n");
+    const right = search("My period is late", { lang: "en" })[0].item;
+    expect(right.topic).toBe("periods");
+    expect(answer).toContain(right.body);
+    expect(answer).not.toMatch(/prevent pregnancy/i); // the old mistake: Somali "way" matched "ways to prevent pregnancy"
+    void user;
+  });
+
+  it("offers a person instead of guessing when the message couldn't be translated", async () => {
+    const { a } = await webGirl("0712600061", "so");
+    failNext = true;
+    const res = await a.post("/api/me/messages").set(H).send({ text: "Caadadaydu way soo daahday" });
+    expect(res.body.messages.at(-1).text).toMatch(/I'm not sure about that/);
+  });
+});
+
 describe("no machine-written health advice", () => {
   it("answers with the approved text word for word, and never asks an AI to rephrase it", async () => {
     const key = config.llm.apiKey;
