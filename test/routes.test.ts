@@ -19,6 +19,7 @@ import { modelsRouter } from "../src/web/models.js";
 import { appApiRouter } from "../src/web/appApi.js";
 import { landingRouter } from "../src/web/landing.js";
 import { authApi } from "../src/api/auth.js";
+import { apiRouter } from "../src/api/index.js";
 import { meApi } from "../src/api/me.js";
 import { workerApi, audioApi } from "../src/api/worker.js";
 import { adminApi } from "../src/api/admin.js";
@@ -66,6 +67,7 @@ describe("route inventory", () => {
       ...routesOf((simulatorRouter(db) as any).stack, "/simulator"),
       ...routesOf((appApiRouter(db) as any).stack, "/app/api"),
       ...routesOf((landingRouter(db) as any).stack, ""),
+      ...routesOf((apiRouter(db, { loginLimiter: limiter }) as any).stack, "/api"),
       ...routesOf((authApi(db, { loginLimiter: limiter }) as any).stack, "/api/auth"),
       ...routesOf((meApi(db) as any).stack, "/api/me"),
       ...routesOf((workerApi(db) as any).stack, "/api/worker"),

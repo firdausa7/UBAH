@@ -183,6 +183,15 @@ Everyone signs in at `/login`; the server sends each person to their area by rol
 | Admin | As above | `admin` | `/admin` |
 | Clinic desk, partner, reviewer, editor | As above | — | `/staff` |
 
+**The screens** (React, in `web/src/pages/`):
+
+- `/login`: one page. Girls: phone + PIN, or "First time here?" for an SMS code, a new PIN and her language. Staff: "I work with Ubah", then password and code. Quick exit on top, the four languages to switch.
+- `/me`: her conversation (her messages, Ubah's answers, her health worker's replies in her language with **Show English**), a big **Tap to talk** button, **Type instead**, and Settings (language; what her worker can see). Every word is a `web_…` string in the Translation studio: English until a translator's version is approved.
+- `/worker`: inbox (urgent first; language, channel and status filters) beside the open message: her voice note, the original, the English with "Machine translated: check the meaning", warnings (audio unclear, low confidence, language differs, not translated), why it was urgent, replies sent, the reply box with checked answers, and Mark resolved.
+- `/admin`: assign each girl to a nurse or Dada (unassigned girls highlighted), workers with their number of girls, and answer templates.
+
+The worker and admin screens are separate files, loaded only when someone opens them: girls' phones never download them. The landing page's "Staff login" link now opens `/login`.
+
 Girls stay in `users` and staff in `staff`: a girl who signs in on the web with the same phone she uses on WhatsApp is the same girl, and replies keep going to the channel she used. Girls' sessions last 7 days and end after 48 hours unused (phones are shared). Every request that changes something must carry the `X-Ubah: 1` header, which another website can't send.
 
 - **Assignments** (`/api/admin`): an admin assigns each girl to one nurse or Dada. Admins see who looks after whom, never her messages.

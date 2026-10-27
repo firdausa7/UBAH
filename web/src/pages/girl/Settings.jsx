@@ -1,0 +1,87 @@
+import { useState } from 'react'
+import { Link, useNavigate } from 'react-router'
+import { api } from '../../lib/api.js'
+import { useSession } from '../../lib/session.jsx'
+import { useStrings } from '../../lib/strings.jsx'
+
+export default function Settings({ me, setMe }) {
+  const { t } = useStrings()
+  const { signOut } = useSession()
+  const navigate = useNavigate()
+  const [saved, setSaved] = useState('')
+
+  async function language(code) {
+    const r = await api.patch('/me', { language: code })
+    setMe({ ...me, language: r.language })
+  }
+
+  async function share(scope, value) {
+    const r = await api.put('/me/consents', { [scope]: value })
+    setMe({ ...me, consents: r.consents })
+    setSaved(scope)
+    setTimeout(() => setSaved(''), 1500)
+  }
+
+  return (
+    <main className="flex flex-col gap-5 px-4 pt-2 pb-12">
+      <Link to="/me" className="btn-quiet self-start">
+        ← {t('web_back')}
+      </Link>
+
+      <section className="rounded-[28px] bg-white p-6 ring-1 ring-hair">
+        <h2 className="mb-4 text-[28px] leading-tight">{t('web_language')}</h2>
+        <div className="grid grid-cols-2 gap-2">
+          {me.languages.map((l) => (
+            <button
+              key={l.code}
+              type="button"
+              lang={l.code}
+              onClick={() => language(l.code)}
+              aria-pressed={me.language === l.code}
+              className={`min-h-12 rounded-2xl border px-3 ${me.language === l.code ? 'border-accent bg-lavender font-medium text-plum' : 'border-line bg-white text-text hover:border-accent'}`}
+            >
+              {l.name}
+            </button>
+          ))}
+        </div>
+      </section>
+
+      <section className="rounded-[28px] bg-blush p-6">
+        <h2 className="mb-4 text-[28px] leading-tight">{t('web_share_title')}</h2>
+        <Toggle label={t('web_share_messages')} hint={t('web_share_messages_hint')} on={Boolean(me.consents.messages)} onChange={(v) => share('messages', v)} saved={saved === 'messages' && t('web_saved')} />
+        <Toggle label={t('web_share_voice')} hint={t('web_share_voice_hint')} on={Boolean(me.consents.voice)} onChange={(v) => share('voice', v)} saved={saved === 'voice' && t('web_saved')} />
+        <p className="mt-4 text-[15px] text-rose-ink">{t('web_share_urgent')}</p>
+      </section>
+
+      <button type="button" className="btn-ghost self-center" onClick={async () => (await signOut(), navigate('/login', { replace: true }))}>
+        {t('web_sign_out')}
+      </button>
+    </main>
+  )
+}
+
+function Toggle({ label, hint, on, onChange, saved }) {
+  return (
+    <div className="flex items-start justify-between gap-4 border-t border-rose/60 py-4 first-of-type:border-t-0">
+      <div>
+        <p className="font-medium text-plum">{label}</p>
+        <p className="text-[15px] text-text">{hint}</p>
+        {saved && (
+          <p className="mt-1 text-[14px] text-accent" role="status">
+            {saved}
+          </p>
+        )}
+      </div>
+      <button
+        type="button"
+        role="switch"
+        aria-checked={on}
+        aria-label={label}
+        onClick={() => onChange(!on)}
+        className={`relative mt-1 h-8 w-14 shrink-0 rounded-full transition-colors ${on ? 'bg-accent' : 'bg-white ring-1 ring-line'}`}
+      >
+        <span className={`absolute top-1 h-6 w-6 rounded-full transition-all ${on ? 'left-7 bg-white' : 'left-1 bg-muted/50'}`} />
+      </button>
+    </div>
+  )
+}

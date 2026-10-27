@@ -31,7 +31,7 @@ describe("public landing page", () => {
     expect(res.text).toContain("Ubah works in five simple steps");
     expect(res.text).toContain("Frequently asked questions");
     expect(res.text).toContain('href="/app/"');
-    expect(res.text).toContain('href="/staff/login"');
+    expect(res.text).toContain('href="/login"');
     expect(res.text).toContain("data-quick-exit");
     expect(res.text).not.toMatch(/<script>(?!<\/script>)/);
     expect((await request(app).get("/landing.js")).text).toContain("location.replace");

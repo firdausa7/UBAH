@@ -1,37 +1,88 @@
 @import "tailwindcss";
 
+/* The landing page's palette and type: lavender, deep plum, rose, cream. No orange anywhere. */
 @theme {
-  --font-sans: "DM Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-sans: "DM Sans", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-serif: "Cormorant Garamond", Georgia, serif;
 
-  --color-ink: #151d2c;
-  --color-muted: #5b6575;
-  --color-ground: #f7f6f4;
-  --color-sand: #f3f0ee;
-  --color-line: #ece8e3;
-  --color-chip: #c4c5e0;
-  --color-mist: #c9d3e0;
-  --color-lilac: #eeecfb;
-  --color-clay: #c8462b;
-  --color-clay-dark: #a83a23;
-  --color-sea: #1f5f8b;
-  --color-ok: #14532d;
-  --color-ok-bg: #dcefe6;
-  --color-warn: #9a3412;
-  --color-warn-bg: #fde7df;
+  --color-plum: #2e1f3e;
+  --color-text: #4a3f55;
+  --color-muted: #5b5066;
+  --color-cream: #fff8f3;
+  --color-lavender: #e6dbfa;
+  --color-blush: #fbe1e7;
+  --color-rose: #f7c6d0;
+  --color-rose-ink: #6b2a55;
+  --color-line: #d8cafa;
+  --color-hair: #ece2f5;
+  --color-accent: #6c4acf;
+  --color-mist: #e2d6f6;
+  --color-soft: #f5eef9;
+  --color-urgent: #8e1340;
+  --color-urgent-bg: #f7c6d0;
 }
 
 @layer base {
   html,
   body {
-    background: var(--color-ground);
-    color: var(--color-ink);
+    background: var(--color-cream);
+    color: var(--color-plum);
     -webkit-font-smoothing: antialiased;
+  }
+  body {
+    font-size: 17px;
+    line-height: 1.6;
+  }
+  h1,
+  h2 {
+    font-family: var(--font-serif);
+    font-weight: 600;
+    text-wrap: balance;
+  }
+  h1 em,
+  h2 em {
+    font-style: italic;
+    color: var(--color-accent);
   }
   button {
     cursor: pointer;
   }
   :focus-visible {
-    outline: 3px solid var(--color-sea);
-    outline-offset: 2px;
+    outline: 3px solid var(--color-accent);
+    outline-offset: 3px;
+    border-radius: 6px;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    * {
+      animation: none !important;
+      transition: none !important;
+    }
+  }
+}
+
+@layer components {
+  .btn {
+    @apply inline-flex min-h-12 items-center justify-center gap-2 rounded-full border-[1.5px] border-accent bg-accent px-7 font-medium text-white no-underline transition-colors hover:border-plum hover:bg-plum disabled:cursor-not-allowed disabled:opacity-60;
+  }
+  .btn-ghost {
+    @apply inline-flex min-h-12 items-center justify-center gap-2 rounded-full border-[1.5px] border-accent bg-transparent px-7 font-medium text-accent no-underline transition-colors hover:bg-accent hover:text-white disabled:opacity-60;
+  }
+  .btn-quiet {
+    @apply inline-flex min-h-11 items-center gap-2 rounded-full px-4 font-medium text-plum no-underline hover:bg-soft;
+  }
+  .field {
+    @apply block w-full rounded-2xl border border-line bg-white px-4 py-3 text-plum placeholder:text-muted/70 focus:border-accent focus:outline-none;
+  }
+  .label {
+    @apply mb-1.5 block text-[15px] font-medium text-plum;
+  }
+  .card {
+    @apply rounded-3xl bg-white p-6 ring-1 ring-hair;
+  }
+  .eyebrow {
+    @apply text-[13px] font-medium tracking-[0.18em] text-muted uppercase;
+  }
+  .tag {
+    @apply inline-flex items-center rounded-full px-2.5 py-0.5 text-[13px] font-medium;
   }
 }

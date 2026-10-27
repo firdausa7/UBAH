@@ -5,6 +5,9 @@ import { authApi } from "./auth.js";
 import { meApi } from "./me.js";
 import { workerApi, audioApi } from "./worker.js";
 import { adminApi } from "./admin.js";
+import { en, rawString } from "../i18n.js";
+import { girlLanguages, languageConfig } from "../languages/index.js";
+import { refreshCaches } from "../caches.js";
 
 // The JSON API for the React app (/login, /me, /worker, /admin).
 // Cookies carry the session; every request that changes something must also carry "X-Ubah: 1",
@@ -16,6 +19,16 @@ export function apiRouter(db: Db, opts: { loginLimiter: RequestHandler }): Route
     res.setHeader("Cache-Control", "no-store");
     if (!["GET", "HEAD"].includes(req.method) && req.get("x-ubah") !== "1") return res.status(403).json({ error: "csrf" });
     next();
+  });
+  // Girl-facing words for /login and /me, in her language (published translations; English until then).
+  r.get("/strings", async (req, res) => {
+    await refreshCaches(db);
+    const asked = String(req.query.lang ?? "");
+    const l = languageConfig(asked);
+    const lang = l && l.status !== "disabled" ? l.code : "en";
+    const keys = Object.keys(en).filter((k) => k.startsWith("web_") || k === "app_voice_unsupported");
+    res.setHeader("Cache-Control", "no-cache");
+    res.json({ lang, languages: girlLanguages().map((x) => ({ code: x.code, name: x.name })), strings: Object.fromEntries(keys.map((k) => [k, rawString(lang, k)])) });
   });
   r.use("/auth", authApi(db, opts));
   r.use("/me", meApi(db));

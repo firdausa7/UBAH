@@ -206,7 +206,7 @@ ${waLink ? `<p class="talk">${L("land_talk_now")} <a href="${esc(waLink)}">${L("
 <footer class="site"><div class="wrap">
 <div class="cols">
 <div class="about">${brand}<p>${L("land_footer_tagline")}</p></div>
-<nav class="col" aria-label="${L("land_footer_links")}"><p class="label">${L("land_footer_links")}</p><a href="#about">${L("land_nav_about")}</a><a href="#how">${L("land_nav_how")}</a><a href="#faq">${L("land_nav_faq")}</a><a href="/staff/login">${L("land_staff_login")}</a></nav>
+<nav class="col" aria-label="${L("land_footer_links")}"><p class="label">${L("land_footer_links")}</p><a href="#about">${L("land_nav_about")}</a><a href="#how">${L("land_nav_how")}</a><a href="#faq">${L("land_nav_faq")}</a><a href="/login">${L("land_staff_login")}</a></nav>
 <div class="col"><p class="label">${L("land_footer_touch")}</p>
 ${contact(L("land_whatsapp"), p.whatsappNumber, waLink)}${contact(L("land_sms"), p.smsNumber)}${contact(L("land_ussd"), p.ussdCode)}
 <p><a href="/app/">${L("land_app")}</a></p>${p.contactEmail ? `<p><a href="mailto:${esc(p.contactEmail)}">${esc(p.contactEmail)}</a></p>` : ""}</div>

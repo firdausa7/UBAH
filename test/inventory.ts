@@ -20,6 +20,7 @@ export const INVENTORY = [
   "GET /app/api/learn",
   "GET /app/api/audio/:id",
   "GET /health/live",
+  "GET /api/strings",
   "GET /api/auth/session",
   "POST /api/auth/girl/code",
   "POST /api/auth/girl/verify",
