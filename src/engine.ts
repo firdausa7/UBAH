@@ -10,6 +10,7 @@ import { transcribe, type MockVoice } from "./providers/speech.js";
 import { toEnglish, type Translation } from "./providers/translation.js";
 import { consents, assignedWorkerId, setConsents, shareOnRequest } from "./auth/access.js";
 import { saveVoiceNote } from "./voice/store.js";
+import { eraseGirl } from "./erase.js";
 import { issuePass, SERVICE_MENU, TOPIC_SERVICES } from "./referrals.js";
 import { sendToUser, alertStaff, flushPending, type UserRow } from "./channels/outbound.js";
 import { log } from "./log.js";
@@ -185,8 +186,7 @@ async function handleMessage(db: Db, msg: Incoming): Promise<void> {
   if (cmd === "DELETE") {
     // Deletes her messages, passes, check-ins and cases; keeps nothing that links back to her.
     await say(db, user, "deleted");
-    await db.query(`DELETE FROM users WHERE id = $1`, [user.id]);
-    await db.query(`DELETE FROM outbox WHERE to_hash = $1`, [user.phone_hash]);
+    await eraseGirl(db, user);
     return;
   }
   // What her health worker may see: SHARE, VOICE, PRIVATE (any time, on any channel).

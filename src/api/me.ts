@@ -1,11 +1,12 @@
 import express, { Router } from "express";
 import type { Db } from "../db.js";
 import { girlLanguages, languageConfig } from "../languages/index.js";
-import { girlOf, requireRole } from "../auth/roles.js";
+import { endGirlSession, girlOf, requireRole } from "../auth/roles.js";
 import { consents, setConsents } from "../auth/access.js";
 import { handleIncoming } from "../engine.js";
 import { rateLimit } from "../security/rateLimit.js";
 import { clinicsFor, issuePassFor, lessonsFor, passesFor } from "../girlCare.js";
+import { eraseGirl } from "../erase.js";
 
 // Her conversation as she sees it: her messages, Ubah's answers, and her health worker's replies in
 // her language, with the English the worker wrote available on tap.
@@ -53,6 +54,13 @@ export function meApi(db: Db): Router {
     if (!l || l.status === "disabled") return res.status(400).json({ error: "language" });
     await db.query(`UPDATE users SET language = $2 WHERE id = $1`, [g.id, l.code]);
     res.json({ language: l.code });
+  });
+
+  // "Wipe my history": deletes her account and everything Ubah holds about her, and signs her out.
+  r.delete("/", async (req, res) => {
+    await eraseGirl(db, girlOf(req));
+    await endGirlSession(db, req, res);
+    res.status(204).end();
   });
 
   // What she shares with her health worker. She can change her mind at any time.

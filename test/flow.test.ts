@@ -304,6 +304,32 @@ describe("care, passes and lessons in her space", () => {
   });
 });
 
+describe("wipe my history", () => {
+  it("deletes her account and everything linked to it, and signs her out", async () => {
+    const { a: her, user } = await webGirl("0712600090", "so", { messages: true, voice: true });
+    await assign(user.id, "nurse");
+    await handleIncoming(db, { channel: "web", from: "", userId: user.id, voice: { audio: Buffer.from("OggS"), mimeType: "audio/ogg", mockText: "Caadadaydu way soo daahday" } });
+    await her.post("/api/me/passes").set(H).send({ services: ["period_care"] });
+    const nurse = await staff("nurse");
+    await nurse.get("/api/worker/inbox"); // leaves an access-log line
+    const count = async (sql: string) => (await db.query(sql, [user.id]))[0].n as number;
+    expect(await count(`SELECT count(*)::int AS n FROM voice_notes WHERE user_id = $1`)).toBe(1);
+
+    expect((await her.delete("/api/me")).status).toBe(403); // the X-Ubah header is still required
+    expect((await her.delete("/api/me").set(H)).status).toBe(204);
+
+    for (const table of ["users WHERE id", "messages WHERE user_id", "passes WHERE user_id", "voice_notes WHERE user_id", "consents WHERE user_id", "assignments WHERE girl_id", "girl_sessions WHERE user_id"]) {
+      expect(await count(`SELECT count(*)::int AS n FROM ${table} = $1`), table).toBe(0);
+    }
+    expect((await db.query(`SELECT count(*)::int AS n FROM outbox WHERE to_hash = $1`, [hashPhone("0712600090")]))[0].n).toBe(0);
+    expect((await her.get("/api/me")).status).toBe(401);
+    // The access log keeps only that someone looked, never what.
+    const log = await db.query(`SELECT what, target_id FROM access_log WHERE girl_id = $1`, [user.id]);
+    expect(log.length).toBeGreaterThan(0);
+    expect(JSON.stringify(log)).not.toMatch(/Caadadaydu/);
+  });
+});
+
 describe("spoken replies in her space", () => {
   it("plays her worker's reply when voice replies are on, and only for her", async () => {
     const so = languageConfig("so")!;

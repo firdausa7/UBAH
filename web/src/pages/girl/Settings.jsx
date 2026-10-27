@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Link, useNavigate } from 'react-router'
 import { api } from '../../lib/api.js'
 import { useSession } from '../../lib/session.jsx'
+import { forgetEverything } from '../../lib/offline.js'
 import { useStrings } from '../../lib/strings.jsx'
 
 export default function Settings({ me, setMe }) {
@@ -9,6 +10,19 @@ export default function Settings({ me, setMe }) {
   const { signOut } = useSession()
   const navigate = useNavigate()
   const [saved, setSaved] = useState('')
+  const [confirmWipe, setConfirmWipe] = useState(false)
+  const [wipeError, setWipeError] = useState('')
+
+  async function wipe() {
+    try {
+      await api.del('/me')
+      forgetEverything()
+      await signOut()
+      navigate('/login', { replace: true })
+    } catch {
+      setWipeError(t('web_error'))
+    }
+  }
 
   async function language(code) {
     const r = await api.patch('/me', { language: code })
@@ -56,6 +70,33 @@ export default function Settings({ me, setMe }) {
       <button type="button" className="btn-ghost self-center" onClick={async () => (await signOut(), navigate('/login', { replace: true }))}>
         {t('web_sign_out')}
       </button>
+
+      <section className="rounded-[28px] bg-white p-6 ring-1 ring-hair">
+        <h2 className="mb-2 text-[26px] leading-tight">{t('app_wipe')}</h2>
+        <p className="mb-4 text-[15px] text-text">{t('app_wipe_explain')}</p>
+        {wipeError && (
+          <p role="alert" className="mb-3 rounded-2xl bg-blush px-4 py-2 text-[15px] text-rose-ink">
+            {wipeError}
+          </p>
+        )}
+        {confirmWipe ? (
+          <div role="alertdialog" aria-label={t('app_wipe')} className="rounded-2xl bg-blush p-4">
+            <p className="mb-3 font-medium text-rose-ink">{t('app_wipe_confirm')}</p>
+            <div className="flex flex-wrap gap-2">
+              <button type="button" className="btn border-urgent bg-urgent hover:border-plum" onClick={wipe}>
+                {t('app_wipe_yes')}
+              </button>
+              <button type="button" className="btn-ghost" onClick={() => setConfirmWipe(false)}>
+                {t('app_cancel')}
+              </button>
+            </div>
+          </div>
+        ) : (
+          <button type="button" className="btn-ghost" onClick={() => setConfirmWipe(true)}>
+            {t('app_wipe')}
+          </button>
+        )}
+      </section>
     </main>
   )
 }

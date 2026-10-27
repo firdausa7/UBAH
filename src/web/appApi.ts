@@ -5,6 +5,7 @@ import { en, LANGUAGES, rawString } from "../i18n.js";
 import { hashPhone, randomToken } from "../privacy.js";
 import { handleIncoming, getOrCreateUser } from "../engine.js";
 import { clinicsFor, issuePassFor, lessonsFor, passesFor } from "../girlCare.js";
+import { eraseGirl } from "../erase.js";
 import { parseMenu } from "../channels/menu.js";
 import { type UserRow } from "../channels/outbound.js";
 import { refreshCaches } from "../caches.js";
@@ -75,8 +76,7 @@ export function appApiRouter(db: Db, opts: { sessionsPerHour?: number; requestsP
 
   // Wipe my history: the same as sending DELETE.
   r.delete("/me", auth, async (req: AppReq, res) => {
-    await db.query(`DELETE FROM users WHERE id = $1`, [req.appUser!.id]);
-    await db.query(`DELETE FROM outbox WHERE to_hash = $1`, [req.appUser!.phone_hash]);
+    await eraseGirl(db, req.appUser!);
     res.status(204).end();
   });
 

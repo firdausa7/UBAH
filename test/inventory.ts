@@ -33,6 +33,7 @@ export const INVENTORY = [
   "POST /api/auth/logout",
   "GET /api/me/",
   "PATCH /api/me/",
+  "DELETE /api/me/",
   "PUT /api/me/consents",
   "GET /api/me/audio/:id",
   "GET /api/me/clinics",
