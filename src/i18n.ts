@@ -298,6 +298,11 @@ export const en: Strings = {
   web_saved: "Saved",
   web_sign_out: "Sign out",
   web_error: "Something went wrong. Please try again.",
+  web_push: "Tell me when a reply arrives",
+  web_push_hint: "Your phone shows only \"New message\": never what it is about, and never the name Ubah.",
+  web_push_title: "New message",
+  web_push_body: "Tap to open.",
+  web_push_blocked: "Notifications are blocked for this site in your phone's settings.",
   web_intro_private: "We never ask your name. Your phone number is kept locked, only to recognise you. Ubah locks itself with your PIN, and Quick exit leaves at once.",
 };
 

@@ -3,7 +3,7 @@
 //   never kept: her messages, her passes, anything about her (phones are shared)
 // Served at /me/sw.js with scope /me (the server allows it), so it controls /me and /me/… only.
 
-const VERSION = 'v1'
+const VERSION = 'v2'
 const SHELL = `ubah-me-shell-${VERSION}`
 const PUBLIC = `ubah-me-public-${VERSION}`
 
@@ -57,7 +57,44 @@ self.addEventListener('fetch', (event) => {
   }
 })
 
-// Sign out or Quick exit: drop everything, so the next person on this phone finds nothing of hers.
+// Sign out or Quick exit: drop everything (and stop notices), so the next person finds nothing of hers.
 self.addEventListener('message', (event) => {
-  if (event.data === 'forget') event.waitUntil(caches.keys().then((keys) => Promise.all(keys.filter((k) => k.startsWith('ubah-me-')).map((k) => caches.delete(k)))))
+  if (event.data === 'forget') {
+    event.waitUntil(
+      Promise.all([
+        caches.keys().then((keys) => Promise.all(keys.filter((k) => k.startsWith('ubah-me-')).map((k) => caches.delete(k)))),
+        self.registration.pushManager.getSubscription().then((s) => s && s.unsubscribe()),
+      ]),
+    )
+  } else if (event.data && event.data.type === 'push-text') {
+    // The notice's words in her language, kept for when a push arrives.
+    const text = new Response(JSON.stringify({ title: event.data.title, body: event.data.body }), { headers: { 'content-type': 'application/json' } })
+    event.waitUntil(caches.open(PUBLIC).then((c) => c.put('/__push-text', text)))
+  }
+})
+
+// A push carries no data: it only says "something new". The notice is neutral (no "Ubah", nothing
+// about the message), and isn't shown at all while she has Ubah open in front of her.
+self.addEventListener('push', (event) => {
+  event.waitUntil(
+    (async () => {
+      const open = await self.clients.matchAll({ type: 'window', includeUncontrolled: true })
+      if (open.some((c) => c.visibilityState === 'visible' && new URL(c.url).pathname.startsWith('/me'))) return
+      const saved = await caches.match('/__push-text')
+      const text = saved ? await saved.json() : { title: 'New message', body: 'Tap to open.' }
+      await self.registration.showNotification(text.title, { body: text.body, tag: 'new-message' })
+    })(),
+  )
+})
+
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close()
+  event.waitUntil(
+    (async () => {
+      const open = await self.clients.matchAll({ type: 'window' })
+      const me = open.find((c) => new URL(c.url).pathname.startsWith('/me'))
+      if (me) return me.focus()
+      return self.clients.openWindow('/me')
+    })(),
+  )
 })

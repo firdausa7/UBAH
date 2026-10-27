@@ -1,4 +1,5 @@
 import type { Db } from "../db.js";
+import { notifyGirl } from "../push.js";
 import { config } from "../config.js";
 import { decryptPhone, encryptSecret, decryptSecret, hashPhone } from "../privacy.js";
 import { t } from "../i18n.js";
@@ -167,6 +168,8 @@ export async function sendToUser(db: Db, user: UserRow, body: string, contentId:
   if (opts.audioMediaId && user.channel === "whatsapp" && waWindowOpen(user) && d.status !== "failed" && d.status !== "held") {
     await sendVoiceAnswer(db, user, opts.audioMediaId);
   }
+  // In the app (not WhatsApp/SMS, which reach her phone themselves): a neutral notice, if she asked for it.
+  if (user.channel === "web" || user.channel === "app") void notifyGirl(db, user.id).catch(() => {});
   return m.id;
 }
 

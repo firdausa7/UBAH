@@ -26,6 +26,8 @@
 
 **Voice notes:** we turn them into text. If you agreed that your health worker can listen to your recordings, we keep the recording locked, only for them, and delete it when your question is answered, or after 30 days at the latest. If you didn't agree, we delete the recording.
 
+**Notifications:** if you switch them on, your phone shows only "New message". We never send what the message says, or the name Ubah, through the notification service ([Google / Apple / Mozilla, depending on your phone]).
+
 **Your location:** if you share it, we use it once to find a clinic near you, then forget it.
 
 **You are in control:**

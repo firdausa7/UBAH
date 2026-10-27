@@ -212,7 +212,7 @@ Girls with smartphones use `/me` (React, in `web/src/pages/girl/`): her conversa
 
 **The old app (`/app`) is retired.** `/app` redirects to `/me`, and the landing page's buttons open `/me`. Phones that installed the old app get a retirement service worker the next time they are online: it deletes what the old app stored, removes itself and opens `/me`. The old app's API (`/app/api`), icons and lesson audio stay, because `/me` and those phones still use them. Unlike the old app, `/me` asks for a phone number (to sign in and to recognise her on every channel); a girl who wants no account at all can still read the landing page and use USSD.
 
-**Not yet:** push notifications. Replies appear when she opens `/me` (the conversation refreshes every 8 seconds). Web Push needs a push-service setup and a decision on what a notification may show on a shared phone.
+**Notifications (off until she switches them on in Settings).** When a reply arrives in her app, her phone shows only "New message / Tap to open" in her language: never the name Ubah, never what it is about, and nothing while she has Ubah open. The push itself carries no data, so nothing she wrote or received passes through Google's, Apple's or Mozilla's push services; Ubah keeps only the phone's push address (deleted when she switches it off, signs out, wipes her history, or the phone unsubscribes), at most one notice every 2 minutes. Only those push services' addresses are accepted. Set it up once with `npm run vapid-keys` (`VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT` in `.env`); without the keys the switch doesn't appear.
 
 ## Channels
 

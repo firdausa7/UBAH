@@ -8,6 +8,8 @@ import { rateLimit } from "../security/rateLimit.js";
 import { clinicsFor, issuePassFor, lessonsFor, passesFor } from "../girlCare.js";
 import { eraseGirl } from "../erase.js";
 import { parseMenu } from "../channels/menu.js";
+import { pushEnabled, subscribe, unsubscribe, validEndpoint } from "../push.js";
+import { config } from "../config.js";
 
 // Her conversation as she sees it: her messages, Ubah's answers, and her health worker's replies in
 // her language, with the English the worker wrote available on tap.
@@ -70,6 +72,24 @@ export function meApi(db: Db): Router {
     await eraseGirl(db, girlOf(req));
     await endGirlSession(db, req, res);
     res.status(204).end();
+  });
+
+  // "Tell me when a reply arrives": off until she switches it on on this phone.
+  r.get("/push", async (req, res) => {
+    const [n] = await db.query<{ n: number }>(`SELECT count(*)::int AS n FROM push_subscriptions WHERE user_id = $1`, [girlOf(req).id]);
+    res.json({ enabled: pushEnabled(), publicKey: pushEnabled() ? config.push.publicKey : null, devices: n.n });
+  });
+
+  r.put("/push", async (req, res) => {
+    if (!pushEnabled()) return res.status(404).json({ error: "not_available" });
+    if (!validEndpoint(req.body?.endpoint)) return res.status(400).json({ error: "endpoint" });
+    await subscribe(db, girlOf(req).id, req.body.endpoint);
+    res.json({ ok: true });
+  });
+
+  r.delete("/push", async (req, res) => {
+    await unsubscribe(db, girlOf(req).id, validEndpoint(req.body?.endpoint) ? req.body.endpoint : undefined);
+    res.json({ ok: true });
   });
 
   // What she shares with her health worker. She can change her mind at any time.

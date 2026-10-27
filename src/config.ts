@@ -59,6 +59,10 @@ const EnvSchema = z.object({
   GOOGLE_TRANSLATE_BASE_URL: z.string().default("https://translation.googleapis.com"),
   // Spoken replies (ElevenLabs): off unless switched on, and only for languages with an approved voice.
   VOICE_REPLIES: bool(false),
+  // Web push for the girls' space (npm run vapid-keys). Without them, no push.
+  VAPID_PUBLIC_KEY: z.string().default(""),
+  VAPID_PRIVATE_KEY: z.string().default(""),
+  VAPID_SUBJECT: z.string().default("mailto:privacy@example.org"),
   ELEVENLABS_API_KEY: z.string().default(""),
   ELEVENLABS_BASE_URL: z.string().default("https://api.elevenlabs.io"),
   ELEVENLABS_MODEL: z.string().default("eleven_multilingual_v2"),
@@ -216,6 +220,7 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     stt: { baseUrl: e.STT_BASE_URL ?? e.LLM_BASE_URL, apiKey: e.STT_API_KEY ?? e.LLM_API_KEY, model: e.STT_MODEL, minConfidence: e.STT_MIN_CONFIDENCE, perLanguage: perLanguageStt.values,
       google: { credentialsPath: e.STT_GOOGLE_CREDENTIALS ?? "", credentialsJson: e.STT_GOOGLE_CREDENTIALS_JSON ?? "", location: e.STT_GOOGLE_LOCATION ?? "", model: e.STT_GOOGLE_MODEL } },
     translate: { apiKey: e.GOOGLE_TRANSLATE_API_KEY, baseUrl: e.GOOGLE_TRANSLATE_BASE_URL },
+    push: { publicKey: e.VAPID_PUBLIC_KEY, privateKey: e.VAPID_PRIVATE_KEY, subject: e.VAPID_SUBJECT },
     voiceReplies: { enabled: e.VOICE_REPLIES, apiKey: e.ELEVENLABS_API_KEY, baseUrl: e.ELEVENLABS_BASE_URL, model: e.ELEVENLABS_MODEL },
 
     // WhatsApp Cloud API (Meta).

@@ -36,6 +36,6 @@ export const api = {
   post: (path, body) => call('POST', path, body),
   put: (path, body) => call('PUT', path, body),
   patch: (path, body) => call('PATCH', path, body),
-  del: (path) => call('DELETE', path),
+  del: (path, body) => call('DELETE', path, body),
   upload: (path, blob) => call('POST', path, undefined, { raw: blob }),
 }

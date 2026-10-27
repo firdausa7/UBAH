@@ -1,4 +1,5 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import { currentSubscription, pushSupported, turnOffPush, turnOnPush } from '../../lib/push.js'
 import { Link, useNavigate } from 'react-router'
 import { api } from '../../lib/api.js'
 import { useSession } from '../../lib/session.jsx'
@@ -11,10 +12,29 @@ export default function Settings({ me, setMe }) {
   const navigate = useNavigate()
   const [saved, setSaved] = useState('')
   const [confirmWipe, setConfirmWipe] = useState(false)
+  const [push, setPush] = useState({ available: false, on: false, blocked: false })
+
+  useEffect(() => {
+    if (!pushSupported()) return
+    Promise.all([api.get('/me/push'), currentSubscription()])
+      .then(([p, sub]) => setPush({ available: p.enabled, publicKey: p.publicKey, on: Boolean(sub), blocked: Notification.permission === 'denied' }))
+      .catch(() => {})
+  }, [])
+
+  async function togglePush(on) {
+    if (on) {
+      const r = await turnOnPush(push.publicKey, { title: t('web_push_title'), body: t('web_push_body') }).catch(() => 'error')
+      setPush({ ...push, on: r === 'on', blocked: r === 'blocked' })
+    } else {
+      await turnOffPush()
+      setPush({ ...push, on: false })
+    }
+  }
   const [wipeError, setWipeError] = useState('')
 
   async function wipe() {
     try {
+      await turnOffPush()
       await api.del('/me')
       forgetEverything()
       await signOut()
@@ -67,11 +87,17 @@ export default function Settings({ me, setMe }) {
         <p className="mt-4 text-[15px] text-rose-ink">{t('web_share_urgent')}</p>
       </section>
 
+      {push.available && (
+        <section className="rounded-[28px] bg-white px-6 py-2 ring-1 ring-hair">
+          <Toggle label={t('web_push')} hint={push.blocked ? t('web_push_blocked') : t('web_push_hint')} on={push.on} onChange={togglePush} />
+        </section>
+      )}
+
       <Link to="/me/intro" className="btn-quiet self-center">
         {t('app_intro_title')}
       </Link>
 
-      <button type="button" className="btn-ghost self-center" onClick={async () => (await signOut(), navigate('/login', { replace: true }))}>
+      <button type="button" className="btn-ghost self-center" onClick={async () => (await turnOffPush(), await signOut(), navigate('/login', { replace: true }))}>
         {t('web_sign_out')}
       </button>
 
