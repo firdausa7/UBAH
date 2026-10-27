@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useState } from 'react'
 import { Navigate, useLocation } from 'react-router'
-import { api } from './api.js'
+import { api, ApiError } from './api.js'
+import { forgetEverything, isRememberedGirl, rememberGirl } from './offline.js'
 
 // Who is signed in, as the server says. The guards below are only for comfort:
 // every /api/me, /api/worker and /api/admin call is checked on the server.
@@ -11,9 +12,12 @@ export function SessionProvider({ children }) {
   const [session, setSession] = useState(undefined) // undefined: still asking; null: nobody
   const refresh = useCallback(async () => {
     try {
-      setSession(await api.get('/auth/session'))
-    } catch {
-      setSession(null)
+      const s = await api.get('/auth/session')
+      if (s.role === 'girl') rememberGirl()
+      setSession(s)
+    } catch (e) {
+      // No connection (not "signed out"): a girl on this phone can still open what works offline.
+      setSession(!(e instanceof ApiError) && isRememberedGirl() ? { role: 'girl', offline: true } : null)
     }
   }, [])
   useEffect(() => {
@@ -21,6 +25,7 @@ export function SessionProvider({ children }) {
   }, [refresh])
   const signOut = useCallback(async () => {
     await api.post('/auth/logout').catch(() => {})
+    forgetEverything()
     setSession(null)
   }, [])
   return <SessionContext.Provider value={{ session, refresh, signOut }}>{children}</SessionContext.Provider>

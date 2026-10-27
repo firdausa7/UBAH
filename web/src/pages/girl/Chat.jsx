@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { api } from '../../lib/api.js'
+import { api, ApiError } from '../../lib/api.js'
+import { enqueue, queued, setQueue } from '../../lib/offline.js'
 import { useStrings } from '../../lib/strings.jsx'
 
 const POLL_MS = 8000
@@ -13,6 +14,8 @@ export default function Chat() {
   const [error, setError] = useState('')
   const [typing, setTyping] = useState(false)
   const [text, setText] = useState('')
+  const [waiting, setWaiting] = useState(queued)
+  const [online, setOnline] = useState(() => navigator.onLine !== false)
   const last = messages.at(-1)?.id ?? 0
   const lastRef = useRef(0)
   useEffect(() => {
@@ -28,14 +31,42 @@ export default function Chat() {
     })
   }, [])
 
+  // Messages typed offline go out, in order, as soon as she is back.
+  const flush = useCallback(async () => {
+    let left = queued()
+    while (left.length) {
+      try {
+        merge((await api.post(`/me/messages?after=${lastRef.current}`, { text: left[0] })).messages)
+      } catch (e) {
+        if (!(e instanceof ApiError)) break // still offline: try again later
+      }
+      left = left.slice(1)
+      setQueue(left)
+    }
+    setWaiting(queued())
+  }, [merge])
+
+  useEffect(() => {
+    const on = () => (setOnline(true), flush())
+    const off = () => setOnline(false)
+    window.addEventListener('online', on)
+    window.addEventListener('offline', off)
+    return () => (window.removeEventListener('online', on), window.removeEventListener('offline', off))
+  }, [flush])
+
   // New replies arrive while she has the page open (her health worker may answer any time).
   useEffect(() => {
     let live = true
     const pull = () =>
       api
         .get(`/me/messages?after=${lastRef.current}`)
-        .then((d) => live && merge(d.messages))
-        .catch(() => {})
+        .then((d) => {
+          if (!live) return
+          setOnline(true)
+          merge(d.messages)
+          if (queued().length) flush()
+        })
+        .catch((e) => live && !(e instanceof ApiError) && setOnline(false))
         .finally(() => live && setLoaded(true))
     pull()
     const id = setInterval(pull, POLL_MS)
@@ -43,7 +74,7 @@ export default function Chat() {
       live = false
       clearInterval(id)
     }
-  }, [merge])
+  }, [merge, flush])
 
   useEffect(() => {
     end.current?.scrollIntoView({ block: 'end' })
@@ -67,7 +98,29 @@ export default function Chat() {
     e.preventDefault()
     const body = text.trim()
     if (!body) return
-    if (await send(() => api.post(`/me/messages?after=${last}`, { text: body }))) setText('')
+    if (!online) {
+      enqueue(body)
+      setWaiting(queued())
+      setText('')
+      return
+    }
+    setBusy(true)
+    setError('')
+    try {
+      merge((await api.post(`/me/messages?after=${last}`, { text: body })).messages)
+      setText('')
+    } catch (err) {
+      if (err instanceof ApiError) setError(t('web_error'))
+      else {
+        // The connection dropped: keep it for later.
+        enqueue(body)
+        setWaiting(queued())
+        setOnline(false)
+        setText('')
+      }
+    } finally {
+      setBusy(false)
+    }
   }
 
   return (
@@ -84,10 +137,24 @@ export default function Chat() {
             <Bubble key={m.id} m={m} />
           ))}
         </ol>
+        {waiting.length > 0 && (
+          <ol className="mt-3 flex flex-col gap-3" aria-label={t('app_offline')}>
+            {waiting.map((w, i) => (
+              <li key={i} className="max-w-[85%] self-end rounded-[20px_20px_4px_20px] bg-white/60 px-4 py-3 text-[16px] text-muted border border-dashed border-line">
+                {w}
+              </li>
+            ))}
+          </ol>
+        )}
         <div ref={end} />
       </main>
 
       <footer className="sticky bottom-14 border-t border-hair bg-cream/95 px-4 pt-4 pb-4 backdrop-blur">
+        {!online && (
+          <p role="status" className="mb-3 rounded-2xl bg-lavender px-4 py-2 text-[15px] text-plum">
+            {t('app_offline')}
+          </p>
+        )}
         {error && (
           <p role="alert" className="mb-3 rounded-2xl bg-blush px-4 py-2 text-[15px] text-rose-ink">
             {error}
@@ -104,7 +171,7 @@ export default function Chat() {
             </button>
           </form>
         ) : (
-          <Recorder busy={busy} onAudio={(blob) => send(() => api.upload(`/me/voice?after=${last}`, blob))} />
+          <Recorder busy={busy || !online} onAudio={(blob) => send(() => api.upload(`/me/voice?after=${last}`, blob))} />
         )}
         <p className="mt-3 text-center">
           <button type="button" className="text-[15px] font-medium text-accent underline underline-offset-4" onClick={() => setTyping(!typing)}>

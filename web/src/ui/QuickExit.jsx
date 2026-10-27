@@ -1,10 +1,8 @@
 // Leaves at once and replaces this page in the browser history, like the landing page's Quick exit.
+import { forgetEverything } from '../lib/offline.js'
+
 export function quickExit() {
-  try {
-    localStorage.removeItem('ubah:draft')
-  } catch {
-    /* nothing kept */
-  }
+  forgetEverything()
   window.location.replace('https://www.google.com/search?q=weather+today')
 }
 

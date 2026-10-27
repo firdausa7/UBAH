@@ -194,7 +194,9 @@ Everyone signs in at `/login`; the server sends each person to their area by rol
 - `/worker`: inbox (urgent first; language, channel and status filters) beside the open message: her voice note, the original, the English with "Machine translated: check the meaning", warnings (audio unclear, low confidence, language differs, not translated), why it was urgent, replies sent, the reply box with checked answers, and Mark resolved.
 - `/admin`: assign each girl to a nurse or Dada (unassigned girls highlighted), workers with their number of girls, and answer templates.
 
-The worker and admin screens are separate files, loaded only when someone opens them: girls' phones never download them. The landing page's "Staff login" link now opens `/login`.
+The worker and admin screens are separate files, loaded only when someone opens them: girls' phones never download them.
+
+**`/me` offline and on the home screen.** A service worker (`web/public/sw.js`, served at `/me/sw.js`) keeps what is public on the phone: the app itself, the words in her language, and the lessons with their audio. Her messages, passes and profile are **never** stored on the phone (phones are shared); they need a connection. A message typed offline waits in that browser tab only and is sent when she is back online. Quick exit and Sign out delete everything Ubah stored. Care, My passes and Learn are in `/me` too (bottom bar), sharing `src/girlCare.ts` with the old app, so `/app` can be retired once `/me` is in use. The landing page's "Staff login" link now opens `/login`.
 
 Girls stay in `users` and staff in `staff`: a girl who signs in on the web with the same phone she uses on WhatsApp is the same girl, and replies keep going to the channel she used. Girls' sessions last 7 days and end after 48 hours unused (phones are shared). Every request that changes something must carry the `X-Ubah: 1` header, which another website can't send.
 

@@ -2,7 +2,8 @@ import { useCallback, useEffect, useState } from 'react'
 import { Link, NavLink, Route, Routes } from 'react-router'
 import { api } from '../../lib/api.js'
 import { Waiting } from '../../lib/session.jsx'
-import { StringsProvider, useStrings } from '../../lib/strings.jsx'
+import { StringsProvider, savedLanguage, useStrings } from '../../lib/strings.jsx'
+import { registerOffline } from '../../lib/offline.js'
 import { Brand } from '../../ui/Brand.jsx'
 import { QuickExit } from '../../ui/QuickExit.jsx'
 import Chat from './Chat.jsx'
@@ -16,7 +17,8 @@ export default function GirlApp() {
   const [me, setMe] = useState(null)
   const reload = useCallback(() => api.get('/me').then(setMe), [])
   useEffect(() => {
-    reload().catch(() => setMe({ language: 'en', consents: {}, languages: [] }))
+    registerOffline()
+    reload().catch(() => setMe({ language: savedLanguage() || 'en', consents: {}, languages: [], offline: true }))
   }, [reload])
   if (!me) return <Waiting />
   return (

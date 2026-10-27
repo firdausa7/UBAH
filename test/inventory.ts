@@ -55,6 +55,8 @@ export const INVENTORY = [
   "GET /api/audio/:id",
   "GET /login",
   "GET /me",
+  "GET /me/sw.js",
+  "GET /me/manifest.webmanifest",
   "GET /me/{*rest}",
   "GET /worker",
   "GET /worker/{*rest}",

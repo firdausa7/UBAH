@@ -294,6 +294,17 @@ export function createApp(db: Db, opts: AppOptions = {}) {
   // Only these areas belong to it; the landing page, /staff and /app stay server-rendered.
   // Before the first `npm run build` they fall through to the normal 404 page.
   app.use("/ui", express.static(join(WEB_DIST, "ui"), { immutable: true, maxAge: "365d" }));
+  // The girls' space works offline (public content only) and installs on a phone.
+  const webFile = (file: string, type: string, headers: Record<string, string> = {}) => (_req: Request, res: Response, next: NextFunction) => {
+    const path = join(WEB_DIST, file);
+    if (!existsSync(path)) return next();
+    res.setHeader("Cache-Control", "no-cache");
+    for (const [k, v] of Object.entries(headers)) res.setHeader(k, v);
+    res.type(type).sendFile(path);
+  };
+  // Scope "/me" (not "/me/") so it also covers the page at /me itself.
+  app.get("/me/sw.js", webFile("sw.js", "application/javascript", { "Service-Worker-Allowed": "/me" }));
+  app.get("/me/manifest.webmanifest", webFile("me.webmanifest", "application/manifest+json"));
   for (const path of WEB_ROUTES) {
     app.get(path, (_req, res, next) => {
       const index = join(WEB_DIST, "index.html");

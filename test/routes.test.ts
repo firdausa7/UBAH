@@ -96,6 +96,13 @@ describe("route inventory", () => {
       expect(res.status, path).toBe(built ? 200 : 404);
       if (built) expect(res.text).toContain('<div id="root">');
     }
+    if (built) {
+      const sw = await request(app).get("/me/sw.js");
+      expect(sw.headers["content-type"]).toMatch(/javascript/);
+      expect(sw.text).toContain("never kept: her messages");
+      expect(sw.headers["service-worker-allowed"]).toBe("/me");
+      expect((await request(app).get("/me/manifest.webmanifest")).headers["content-type"]).toMatch(/manifest\+json/);
+    }
     expect((await request(app).get("/meeting")).status).toBe(404);
     expect((await request(app).get("/workers")).status).toBe(404);
   });
