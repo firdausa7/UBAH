@@ -34,7 +34,7 @@ This repository started as the **functional prototype** for the UNICEF Femtech V
 | USSD menus for feature phones, including "Urgent help now" that reaches a human | `src/ussd.ts` |
 | Nearest partner clinic from a shared location or a typed landmark (coordinates never stored) | `src/location.ts` |
 | Model registry: new models are candidates; a danger-sign model can't go live if recall drops for any danger class | `src/ml/registry.ts`, `/staff/models` |
-| The girls' app: installable, works offline, PIN lock, quick exit, wipe history, same engine as WhatsApp | `/app`, `src/pwa/`, `src/web/appApi.ts` |
+| The girls' space: sign in with phone and PIN, voice or text, care and passes, lessons, installable, works offline for public content, quick exit, same engine as WhatsApp | `/me`, `web/src/pages/girl/`, `src/api/me.ts` |
 | Clinic ratings for girls ("X of Y girls were treated with respect"), shown only from 5 ratings | `src/ratings.ts` |
 
 ## Run it locally (no accounts needed)
@@ -48,7 +48,7 @@ npm run dev        # http://localhost:3000
 ```
 
 - **Public landing page for girls** (lavender, with the Ubah rose: welcome, Meet Ubah, five steps, what we solve, care that listens first, questions, Quick exit bar; every sentence translatable as `land_…` strings, `?lang=so|sw|om|en`; images in `src/web/assets/`): http://localhost:3000/ — set `PUBLIC_SMS_NUMBER`, `PUBLIC_WHATSAPP_NUMBER`, `PUBLIC_USSD_CODE` and `PUBLIC_CONTACT_EMAIL` once they are live; until then it says "coming soon", and the WhatsApp chat link only appears once the number is set
-- **The girls' app**: http://localhost:3000/app/ (on a phone: open it in Chrome and choose "Add to Home screen")
+- **The girls' space**: http://localhost:3000/me (sign in at http://localhost:3000/login: "First time here?", any phone number; the code appears in the server log as `[sms:mock] Your code: …`. On a phone: open it in Chrome and choose "Add to Home screen")
 - **Simulator** (chat as a girl): http://localhost:3000/simulator
 - **Staff login**: http://localhost:3000/staff/login — logins `admin`, `nurse`, `dada`, `clinic-a`, `partner`, `reviewer` (health-partner reviewer), `editor` (content editor / translator); password `change-me-now` (set `DEMO_STAFF_PASSWORD` to change it)
 
@@ -206,18 +206,13 @@ Girls stay in `users` and staff in `staff`: a girl who signs in on the web with 
 - **Voice notes** are kept only if she shares her voice: encrypted in the database, playable only through a link made for her assigned worker that works for 5 minutes, and deleted when the message is resolved or after 30 days (`src/voice/store.ts`, run by the housekeeping in the 15-minute background sweep).
 - API errors are bare JSON codes (`{"error":"not_found"}`); nothing about a girl appears in error messages or logs.
 
-## The girls' app
+## The girls' space (`/me`)
 
-`/app` is a small installable web app (plain JavaScript, no framework, system fonts; about 25 KB of code) for girls with smartphones. It uses the same engine as WhatsApp and SMS, so the answers, danger handoffs, passes and check-ins are identical.
+Girls with smartphones use `/me` (React, in `web/src/pages/girl/`): her conversation with Ubah and her health worker, a big record button and "Type instead", Care (what she needs, partner clinics with their respect ratings, a free pass), My passes, Learn, and Settings (language; what her health worker can see). It uses the same engine as WhatsApp and SMS. She signs in with her phone number and a PIN; her session ends after 48 hours unused. It works offline for public content and installs on the home screen (see above). Every word is a translatable string (`web_…`, `app_…`, `svc_…`, `cat_…`).
 
-- **First visit:** choose a language, then a three-point "How Ubah works" screen (private, ask anything, free clinic pass), which can be reopened from Settings.
-- **Screens:** Home (ask, find care, learn, her current pass, Talk to a person), Ask (example questions to tap when the chat is empty, type, tap the answer buttons, or record a voice note; Talk to a person sends `DADA`, which every channel understands), Care in three numbered steps (what she needs, partner clinics with their ratings, then one "Get my free pass" button that stays in view), My passes (Ready to use / Used / Expired), Learn (lessons grouped by topic, tap to open, with the recorded audio when there is one), Settings (language, PIN lock, How Ubah works, wipe history). Every bottom-bar item has an icon and a label. **Quick exit** on every screen leaves at once and replaces the page in the browser history. Every word comes from a translatable `app_*` string; new strings show in English until a translator's version is approved.
-- **No account, no phone number:** the app creates a random device secret; the server stores only a keyed hash of it. The conversation is kept on the server (as for WhatsApp), never stored on the phone.
-- **PIN lock:** with a PIN set, the device secret is encrypted with a key derived from the PIN (PBKDF2 + AES-GCM in the browser), so someone holding her phone can't open Ubah.
-- **Offline:** a service worker keeps the app, its text and the lessons (text and audio) for offline use. Messages, passes and account data are never cached. A question typed offline is sent when she is back online.
-- **Every word is translatable:** the app's text is part of the Translation studio (`app_…`, `svc_…`, `cat_…` keys); untranslated text shows in English.
-- **Ratings:** "X of Y girls who went there said they were treated with respect", from the day-3 check-ins of the last 12 months, shown only once a clinic has at least 5 answers — in the app and with the pass on every channel.
-- **Not yet:** push notifications. Check-ins and Dada replies appear when she opens the app (Ask refreshes every 10 seconds). Web Push needs a push-service setup and a decision on what a notification may show on a shared phone.
+**The old app (`/app`) is retired.** `/app` redirects to `/me`, and the landing page's buttons open `/me`. Phones that installed the old app get a retirement service worker the next time they are online: it deletes what the old app stored, removes itself and opens `/me`. The old app's API (`/app/api`), icons and lesson audio stay, because `/me` and those phones still use them. Unlike the old app, `/me` asks for a phone number (to sign in and to recognise her on every channel); a girl who wants no account at all can still read the landing page and use USSD.
+
+**Not yet:** push notifications. Replies appear when she opens `/me` (the conversation refreshes every 8 seconds). Web Push needs a push-service setup and a decision on what a notification may show on a shared phone.
 
 ## Channels
 

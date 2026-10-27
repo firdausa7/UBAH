@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeAll } from "vitest";
 import request from "supertest";
+import { readFileSync } from "node:fs";
 import { freshDb } from "./helpers.js";
 import { createApp } from "../src/server.js";
 import { sendDueCheckins } from "../src/engine.js";
@@ -38,21 +39,19 @@ beforeAll(async () => {
   app = createApp(db, { loginPerMin: 10_000, appApi: { sessionsPerHour: 1000, requestsPerMin: 10_000 } });
 });
 
-describe("the installable app", () => {
-  it("serves the shell, manifest, service worker and icons", async () => {
-    expect((await request(app).get("/app")).headers.location).toBe("/app/");
-    const shell = await request(app).get("/app/");
-    expect(shell.text).toContain('rel="manifest"');
-    expect(shell.text).toContain('src="/app/app.js"');
-    expect(shell.text).not.toMatch(/<script>/); // no inline scripts (strict CSP)
-    expect(shell.headers["content-security-policy"]).toMatch(/media-src 'self' blob:/);
-    expect(shell.headers["content-security-policy"]).toMatch(/worker-src 'self'/);
-    const manifest = await request(app).get("/app/manifest.webmanifest");
-    expect(manifest.headers["content-type"]).toContain("application/manifest+json");
-    expect(JSON.parse(manifest.text).start_url).toBe("/app/");
+describe("the retired app (/app)", () => {
+  it("sends girls to /me, retires the old service worker, and keeps the icons /me uses", async () => {
+    for (const path of ["/app", "/app/", "/app/index.html"]) {
+      const res = await request(app).get(path);
+      expect([res.status, res.headers.location], path).toEqual([302, "/me"]);
+    }
+    // Phones that installed the old app get a service worker that clears it and removes itself.
     const sw = await request(app).get("/app/sw.js");
     expect(sw.headers["service-worker-allowed"]).toBe("/app/");
-    expect(sw.text).toContain("Personal data");
+    expect(sw.text).toContain("self.registration.unregister()");
+    expect(sw.text).toContain('caches.delete');
+    expect(sw.text).not.toContain("addAll");
+    expect((await request(app).get("/app/app.js")).status).toBe(404);
     for (const size of [192, 512]) {
       const png = await request(app).get(`/app/icon-${size}.png`).buffer(true).parse((res: any, cb: any) => {
         const c: Buffer[] = [];
@@ -64,9 +63,6 @@ describe("the installable app", () => {
       expect(buf.readUInt32BE(16)).toBe(size);
     }
     expect((await request(app).get("/app/icon-77.png")).status).toBe(404);
-    // The whole app stays small for 3G.
-    const js = await request(app).get("/app/app.js");
-    expect(js.text.length).toBeLessThan(40_000);
   });
 });
 
@@ -95,16 +91,15 @@ describe("app API", () => {
     expect(en.body.strings.app_pass_valid).toBe("Valid until {date}"); // placeholders left for the app
   });
 
-  it("gives every word the app shows a translatable string, with no hard-coded language", async () => {
-    const js = (await request(app).get("/app/app.js")).text;
-    const en = (await request(app).get("/app/api/strings?lang=en")).body.strings;
-    const used = new Set([...js.matchAll(/tr\("([a-z0-9_]+)"/g)].map((m) => m[1]));
-    for (const k of ["app_ex_1", "app_ex_2", "app_ex_3", "app_ex_4"]) used.add(k); // passed to tr() from a list
+  it("gives every word the girls' space (/me) shows a translatable string", async () => {
+    const dir = new URL("../web/src/", import.meta.url);
+    const files = ["pages/girl/GirlApp.jsx", "pages/girl/Chat.jsx", "pages/girl/Settings.jsx", "pages/girl/Care.jsx", "pages/girl/Passes.jsx", "pages/girl/Learn.jsx", "pages/auth/Login.jsx"];
+    const src = files.map((f) => readFileSync(new URL(f, dir), "utf8")).join("\n");
+    const used = new Set([...src.matchAll(/\bt\(\s*'([a-z0-9_]+)'/g)].map((m) => m[1]));
+    for (const m of src.matchAll(/\['\/me[^']*', '([a-z0-9_]+)'/g)) used.add(m[1]); // the bottom bar's words
     expect(used.size).toBeGreaterThan(40);
-    for (const k of used) expect(en[k], k).toBeTruthy();
-    expect(js).not.toContain("Salaan"); // the greeting comes from app_hello, so translators own it
-    // "Talk to a person" sends DADA, the command every channel understands in every language.
-    expect(js).toContain('sendText("DADA")');
+    const strings = (await request(app).get("/api/strings?lang=en")).body.strings;
+    for (const k of used) expect(strings[k], k).toBeTruthy();
   });
 
   it("the Talk to a person button opens a case for the care team", async () => {

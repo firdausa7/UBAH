@@ -149,7 +149,7 @@ ${config.stage === "staging" ? STAGING_BANNER : ""}<div class="exitbar"><span>${
 <header class="top wrap">${brand}
 <nav class="main" aria-label="Main"><a href="#about">${L("land_nav_about")}</a><a href="#how">${L("land_nav_how")}</a><a href="#solution">${L("land_nav_solution")}</a><a href="#faq">${L("land_nav_faq")}</a></nav>
 <nav class="langs" aria-label="Language">${langs}</nav>
-<a class="btn" href="/app/">${L("land_open")}</a></header>
+<a class="btn" href="/me">${L("land_open")}</a></header>
 
 <main>
 <section id="top" class="hero wrap">
@@ -159,7 +159,7 @@ ${config.stage === "staging" ? STAGING_BANNER : ""}<div class="exitbar"><span>${
 <h2>${L("land_h2")}</h2>
 <p class="lead">${L("land_lead")}</p>
 ${waLink ? `<p class="talk">${L("land_talk_now")} <a href="${esc(waLink)}">${L("land_chat_whatsapp")}</a></p>` : ""}
-<div class="btns"><a class="btn" href="/app/">${L("land_open_app")}</a><a class="btn ghost" href="#how">${L("land_learn_more")}</a></div>
+<div class="btns"><a class="btn" href="/me">${L("land_open_app")}</a><a class="btn ghost" href="#how">${L("land_learn_more")}</a></div>
 </div>
 <div class="portrait"><img src="/assets/girl.jpg" alt="${L("land_girl_alt")}" width="455" height="740"><p>${L("land_girl_note")}</p></div>
 </section>
@@ -168,7 +168,7 @@ ${waLink ? `<p class="talk">${L("land_talk_now")} <a href="${esc(waLink)}">${L("
 <h2 id="meet">${L("land_meet_h")} <em>${L("land_meet_em")}</em></h2>
 <p class="sub">${L("land_meet_lead")}</p>
 <div class="cards">${card("lav", "listens", "land_listens")}${card("blush", "language", "land_language")}${card("lav", "talks", "land_talks")}${card("plain", "person", "land_person")}</div>
-<p style="margin-top:36px"><a class="btn" href="/app/#/ask">${L("land_ask_cta")}</a></p>
+<p style="margin-top:36px"><a class="btn" href="/me">${L("land_ask_cta")}</a></p>
 </section>
 
 <section id="how" class="sec white" aria-labelledby="how-h"><div class="wrap center">
@@ -209,7 +209,7 @@ ${waLink ? `<p class="talk">${L("land_talk_now")} <a href="${esc(waLink)}">${L("
 <nav class="col" aria-label="${L("land_footer_links")}"><p class="label">${L("land_footer_links")}</p><a href="#about">${L("land_nav_about")}</a><a href="#how">${L("land_nav_how")}</a><a href="#faq">${L("land_nav_faq")}</a><a href="/login">${L("land_staff_login")}</a></nav>
 <div class="col"><p class="label">${L("land_footer_touch")}</p>
 ${contact(L("land_whatsapp"), p.whatsappNumber, waLink)}${contact(L("land_sms"), p.smsNumber)}${contact(L("land_ussd"), p.ussdCode)}
-<p><a href="/app/">${L("land_app")}</a></p>${p.contactEmail ? `<p><a href="mailto:${esc(p.contactEmail)}">${esc(p.contactEmail)}</a></p>` : ""}</div>
+<p><a href="/me">${L("land_app")}</a></p>${p.contactEmail ? `<p><a href="mailto:${esc(p.contactEmail)}">${esc(p.contactEmail)}</a></p>` : ""}</div>
 </div>
 <div class="fine"><span>© ${new Date().getFullYear()} Ubah. ${L("land_footer_built")}</span><span>${L("land_footer_danger")}</span></div>
 </div></footer>

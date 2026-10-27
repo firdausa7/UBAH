@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll, afterEach } from "vitest";
 import request from "supertest";
-import { readFileSync, existsSync } from "node:fs";
+import { readdirSync, readFileSync, existsSync } from "node:fs";
 import type { AddressInfo } from "node:net";
 import { freshDb, girl, staffClient, type StaffClient } from "./helpers.js";
 import { INVENTORY, routeExists } from "./inventory.js";
@@ -90,13 +90,21 @@ describe("every button and link, for every role", () => {
     expect(pages).toBeGreaterThan(100);
   });
 
-  it("every API call the girls' app makes exists", () => {
-    const js = readFileSync(new URL("../src/pwa/public/app.js", import.meta.url), "utf8");
-    const calls = [...js.matchAll(/api\(\s*[`"](\/[^`"$?]*)/g)].map((m) => m[1]);
-    expect(calls.length).toBeGreaterThan(8);
-    for (const path of new Set(calls)) {
-      const exists = ["GET", "POST", "PATCH", "DELETE"].some((m) => routeExists(m, `/app/api${path}`));
-      expect(exists, `/app/api${path}`).toBe(true);
+  it("every API call the React app (login, /me, /worker, /admin) makes exists", () => {
+    const dir = new URL("../web/src/", import.meta.url);
+    const files = readdirSync(dir, { recursive: true }).map(String).filter((f) => /\.(jsx?|tsx?)$/.test(f));
+    const src = files.map((f) => readFileSync(new URL(f, dir), "utf8")).join("\n");
+    // The whole path, with each ${…} filled in with a sample value and any ?query dropped.
+    const calls = [...src.matchAll(/api\.(get|post|put|patch|del|upload)\(\s*([`'"])(\/(?:\$\{[^}]*\}|(?!\2).)*)\2/g)].map((m) => ({
+      method: m[1],
+      path: m[3].replace(/\$\{[^}]*\}/g, "1").split("?")[0],
+    }));
+    expect(calls.length).toBeGreaterThan(15);
+    const METHOD: Record<string, string> = { get: "GET", post: "POST", put: "PUT", patch: "PATCH", del: "DELETE", upload: "POST" };
+    for (const c of calls) {
+      const path = `/api${c.path}`.replace(/\/$/, "");
+      const exists = routeExists(METHOD[c.method], path);
+      expect(exists, `${METHOD[c.method]} ${path}`).toBe(true);
     }
     expect(INVENTORY.length).toBeGreaterThan(130);
   });

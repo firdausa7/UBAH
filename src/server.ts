@@ -257,8 +257,9 @@ export function createApp(db: Db, opts: AppOptions = {}) {
     res.type("image/png").setHeader("Cache-Control", "public, max-age=604800");
     res.send(icon(size));
   });
-  // Express treats /app and /app/ alike: redirect only the bare form.
-  app.get("/app", (req, res, next) => (req.originalUrl === "/app" ? res.redirect(301, "/app/") : next()));
+  // The old app's page is retired: the girls' space is /me. Its API, icons and lesson audio stay
+  // (used by /me and by phones that still have the old app until its service worker retires it).
+  for (const path of ["/app", "/app/", "/app/index.html"]) app.get(path, (_req, res) => res.redirect(302, "/me"));
   app.use(
     "/app",
     express.static(PWA_DIR, {

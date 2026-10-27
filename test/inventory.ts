@@ -5,6 +5,8 @@ export const INVENTORY = [
   "GET /assets/:name",
   "GET /health",
   "GET /app",
+  "GET /app/",
+  "GET /app/index.html",
   "GET /app/icon-:size.png",
   "POST /app/api/session",
   "GET /app/api/strings",
