@@ -7,4 +7,5 @@ export default defineConfig({
   plugins: [react(), tailwindcss()],
   build: { assetsDir: 'ui' },
   server: { proxy: { '/api': 'http://localhost:3000', '/app/api': 'http://localhost:3000' } },
+  test: { environment: 'jsdom', include: ['src/**/*.test.js'] },
 })

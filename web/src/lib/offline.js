@@ -35,6 +35,27 @@ export const queued = () => JSON.parse(read(sessionStorage, QUEUE) || '[]')
 export const enqueue = (text) => write(sessionStorage, QUEUE, JSON.stringify([...queued(), text]))
 export const setQueue = (items) => write(sessionStorage, QUEUE, items.length ? JSON.stringify(items) : null)
 
+import { ApiError } from './api.js'
+
+// Only a 400 means the server will never take this message; anything else (offline, locked, too many
+// at once, a server problem) means "try again later".
+export const refusedForGood = (e) => e instanceof ApiError && e.status === 400
+
+// Sends what waited offline, in order, keeping what can't go yet.
+export async function flushQueue(send, isPermanentRefusal = refusedForGood) {
+  let left = queued()
+  while (left.length) {
+    try {
+      await send(left[0])
+    } catch (e) {
+      if (!isPermanentRefusal(e)) break
+    }
+    left = left.slice(1)
+    setQueue(left)
+  }
+  return queued()
+}
+
 export const rememberGirl = () => write(localStorage, GIRL, '1')
 export const isRememberedGirl = () => read(localStorage, GIRL) === '1'
 

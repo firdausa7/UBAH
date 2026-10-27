@@ -4,6 +4,8 @@ import { defineConfig } from "vitest/config";
 
 export default defineConfig({
   test: {
+    // The server's tests; the React app's tests run in web/ with a simulated browser (npm --prefix web test).
+    include: ["test/**/*.test.ts"],
     env: {
       NODE_ENV: "test",
       // Vitest sets BASE_URL="/" for Vite apps; Ubah expects a full URL.

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { api, ApiError } from '../../lib/api.js'
-import { enqueue, queued, setQueue } from '../../lib/offline.js'
+import { enqueue, flushQueue, queued } from '../../lib/offline.js'
 import { useStrings } from '../../lib/strings.jsx'
 
 const POLL_MS = 8000
@@ -33,19 +33,8 @@ export default function Chat() {
 
   // Messages typed offline go out, in order, as soon as she is back.
   const flush = useCallback(async () => {
-    let left = queued()
-    while (left.length) {
-      try {
-        merge((await api.post(`/me/messages?after=${lastRef.current}`, { text: left[0] })).messages)
-      } catch (e) {
-        // Still offline, locked (PIN needed), too many at once or a server problem: keep it and try
-        // again later. Only a message the server refuses for good (400) is dropped.
-        if (!(e instanceof ApiError) || e.status !== 400) break
-      }
-      left = left.slice(1)
-      setQueue(left)
-    }
-    setWaiting(queued())
+    const left = await flushQueue(async (text) => merge((await api.post(`/me/messages?after=${lastRef.current}`, { text })).messages))
+    setWaiting(left)
   }, [merge])
 
   useEffect(() => {
