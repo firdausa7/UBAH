@@ -41,9 +41,12 @@ beforeAll(async () => {
 
 describe("the retired app (/app)", () => {
   it("sends girls to /me, retires the old service worker, and keeps the icons /me uses", async () => {
+    // A page that forwards (not a redirect: an old service worker can't pass one to a page load).
     for (const path of ["/app", "/app/", "/app/index.html"]) {
       const res = await request(app).get(path);
-      expect([res.status, res.headers.location], path).toEqual([302, "/me"]);
+      expect(res.status, path).toBe(200);
+      expect(res.text).toContain('<meta http-equiv="refresh" content="0; url=/me">');
+      expect(res.text).not.toMatch(/<script/);
     }
     // Phones that installed the old app get a service worker that clears it and removes itself.
     const sw = await request(app).get("/app/sw.js");

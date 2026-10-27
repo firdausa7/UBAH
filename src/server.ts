@@ -259,7 +259,10 @@ export function createApp(db: Db, opts: AppOptions = {}) {
   });
   // The old app's page is retired: the girls' space is /me. Its API, icons and lesson audio stay
   // (used by /me and by phones that still have the old app until its service worker retires it).
-  for (const path of ["/app", "/app/", "/app/index.html"]) app.get(path, (_req, res) => res.redirect(302, "/me"));
+  // A small page that forwards to /me, not an HTTP redirect: the old app's service worker on phones
+  // that installed it can't pass a redirect to a page load (the page would fail to open).
+  const moved = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta http-equiv="refresh" content="0; url=/me"><title>Ubah</title></head><body style="font-family:system-ui,sans-serif;background:#FFF8F3;color:#2E1F3E;padding:24px"><p><a href="/me">Ubah</a></p></body></html>`;
+  for (const path of ["/app", "/app/", "/app/index.html"]) app.get(path, (_req, res) => res.setHeader("Cache-Control", "no-store").type("html").send(moved));
   app.use(
     "/app",
     express.static(PWA_DIR, {
