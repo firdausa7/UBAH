@@ -53,12 +53,16 @@ const results = [];
 for (const lang of langs) {
   const csvPath = join(dir, "expected", `${lang}.csv`);
   if (!existsSync(csvPath)) {
-    console.error(`Skipping ${lang}: no ${csvPath}`);
+    console.error(`Skipping ${lang}: no ${csvPath} (copy eval/example/so.csv there to start)`);
     continue;
   }
   const audioDir = join(dir, "audio", lang);
   if (!mock && (!existsSync(audioDir) || readdirSync(audioDir).length === 0)) console.error(`Warning: no recordings in ${audioDir}`);
   results.push(await evaluateLanguage(lang, readFileSync(csvPath, "utf8"), audioDir, { mock }));
+}
+if (!results.length) {
+  console.error(`Nothing to evaluate. Create ${join(dir, "expected", "<lang>.csv")} (start from eval/example/so.csv) and put the recordings in ${join(dir, "audio", "<lang>")}/. See eval/README.md.`);
+  process.exit(1);
 }
 const describe = (l: string) => {
   const s = speechSettingsFor(l);
