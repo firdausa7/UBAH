@@ -191,7 +191,7 @@ Everyone signs in at `/login`; the server sends each person to their area by rol
 
 - `/login`: one page. Girls: phone + PIN, or "First time here?" for an SMS code, a new PIN and her language. Staff: "I work with Ubah", then password and code. Quick exit on top, the four languages to switch.
 - `/me`: her conversation (her messages, Ubah's answers, her health worker's replies in her language with **Show English**), a big **Tap to talk** button, **Type instead**, and Settings (language; what her worker can see). Every word is a `web_…` string in the Translation studio: English until a translator's version is approved.
-- `/worker`: inbox (urgent first; language, channel and status filters) beside the open message: her voice note, the original, the English with "Machine translated: check the meaning", warnings (audio unclear, low confidence, language differs, not translated), why it was urgent, replies sent, the reply box with checked answers, and Mark resolved.
+- `/worker`: inbox (urgent first; language, channel and status filters) beside the open message: her voice note, the original, the English with "Machine translated: check the meaning", warnings (audio unclear, low confidence, language differs, not translated), why it was urgent, her conversation (last 50 messages, opened on demand and logged), replies sent, the reply box with checked answers, and Mark resolved.
 - `/admin`: assign each girl to a nurse or Dada (unassigned girls highlighted), workers with their number of girls, and answer templates.
 
 The worker and admin screens are separate files, loaded only when someone opens them: girls' phones never download them.

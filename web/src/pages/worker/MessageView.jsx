@@ -68,6 +68,8 @@ export default function MessageView({ id, back, onChange }) {
         </section>
       </div>
 
+      <Conversation girl={girl} current={m.id} />
+
       {replies.length > 0 && (
         <section className="rounded-[28px] bg-white p-6 ring-1 ring-hair">
           <h3 className="mb-3 font-serif text-[24px] font-semibold">Replies sent</h3>
@@ -89,6 +91,47 @@ export default function MessageView({ id, back, onChange }) {
 
       <Reply id={m.id} girl={girl} templates={templates} resolved={m.status === 'resolved'} after={() => (load(), onChange())} />
     </article>
+  )
+}
+
+// Her conversation (what she shares; urgent always), loaded only when opened: every look is logged.
+function Conversation({ girl, current }) {
+  const [items, setItems] = useState(null)
+  const [error, setError] = useState(false)
+  async function open(e) {
+    if (!e.currentTarget.open || items) return
+    try {
+      setItems((await api.get(`/worker/girls/${girl.id}/messages`)).messages)
+    } catch {
+      setError(true)
+    }
+  }
+  const who = { girl: `Girl ${girl.anonId}`, ubah: 'Ubah (automatic answer)', worker: 'Health worker' }
+  return (
+    <details className="rounded-[28px] bg-white p-6 ring-1 ring-hair" onToggle={open}>
+      <summary className="cursor-pointer font-serif text-[24px] font-semibold">
+        Conversation <span className="font-sans text-[15px] font-normal text-muted">(last 50 messages; opening it is logged)</span>
+      </summary>
+      {error && <p className="mt-3 text-rose-ink">Could not load the conversation.</p>}
+      {items && items.length === 0 && <p className="mt-3 text-text">Nothing she shares yet.</p>}
+      {items && (
+        <ol className="mt-4 flex flex-col gap-2">
+          {items.map((x) => (
+            <li
+              key={x.id}
+              className={`max-w-[85%] rounded-2xl px-4 py-2.5 text-[15px] ${x.sender === 'girl' ? 'self-start bg-lavender' : 'self-end bg-soft'} ${x.id === current ? 'ring-2 ring-accent' : ''}`}
+            >
+              <span className="mb-0.5 block text-[12px] text-muted">
+                {who[x.sender]} · {when(x.at)}
+                {x.urgent ? ' · urgent' : ''}
+              </span>
+              <span className="whitespace-pre-line text-plum">{x.sender === 'worker' && x.english ? x.english : x.text}</span>
+              {x.sender === 'girl' && x.english && x.english !== x.text && <span className="mt-1 block whitespace-pre-line text-text">English: {x.english}</span>}
+            </li>
+          ))}
+        </ol>
+      )}
+    </details>
   )
 }
 

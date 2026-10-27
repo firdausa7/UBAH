@@ -109,6 +109,15 @@ describe("girl → worker → girl", () => {
     const [r] = await db.query(`SELECT translation_source, english_text FROM replies WHERE message_id = $1`, [m.id]);
     expect(r).toEqual({ translation_source: "machine", english_text: "Please visit the clinic this week." });
     expect((await db.query(`SELECT 1 FROM audit_log WHERE action = 'message.reply' AND target_id = $1`, [String(m.id)])).length).toBe(1);
+
+    // The conversation beside the message: who said what, oldest first, her words with the English.
+    const thread = (await nurse.get(`/api/worker/girls/${user.id}/messages`)).body.messages;
+    const mine = thread.find((x: any) => x.id === m.id);
+    expect(mine).toMatchObject({ sender: "girl", text: "Caadadaydu way soo daahday", english: "My period is late" });
+    expect(thread.at(-1)).toMatchObject({ sender: "worker", english: "Please visit the clinic this week." });
+    expect(thread.some((x: any) => x.sender === "ubah")).toBe(true);
+    const ids = thread.map((x: any) => x.id);
+    expect(ids).toEqual(ids.toSorted((p: number, q: number) => p - q));
   });
 
   it("uses a reviewed answer template instead of machine translation when the English matches", async () => {

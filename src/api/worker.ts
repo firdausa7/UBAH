@@ -8,7 +8,7 @@ import { auditReq } from "../audit.js";
 import { replyToMessage, resolveMessage, reviewedTemplates } from "../replies.js";
 
 const MESSAGE_COLUMNS = `m.id, m.user_id, m.direction, m.channel, m.kind, m.body, m.original_text, m.english_text, m.english_source, m.translation_failed,
-  m.detected_language, m.chosen_language, m.stt_confidence, m.language_mismatch, m.voice_unclear, m.urgent, m.urgent_reason, m.status, m.audio_ref, m.created_at`;
+  m.detected_language, m.chosen_language, m.stt_confidence, m.language_mismatch, m.voice_unclear, m.urgent, m.urgent_reason, m.status, m.audio_ref, m.sent_by_staff, m.created_at`;
 
 // What a worker sees of one message. Machine translations are labelled; the original is always there.
 function toWorkerMessage(m: any, workerId: number, shareVoice: boolean) {
@@ -16,6 +16,7 @@ function toWorkerMessage(m: any, workerId: number, shareVoice: boolean) {
     id: m.id,
     girlId: m.user_id,
     direction: m.direction,
+    sender: m.direction === "in" ? "girl" : m.sent_by_staff ? "worker" : "ubah",
     channel: m.channel,
     kind: m.kind,
     text: m.original_text ?? m.body,
@@ -154,7 +155,8 @@ export function workerApi(db: Db): Router {
     // The same answer for "not yours" and "doesn't exist".
     if (!Number.isInteger(girlId) || !(await isAssigned(db, w.id, girlId))) return res.status(404).json({ error: "not_found" });
     const c = await consents(db, girlId);
-    const rows = await db.query(`SELECT ${MESSAGE_COLUMNS} FROM messages m WHERE m.user_id = $1 AND ($2 OR m.urgent) ORDER BY m.id`, [girlId, c.messages]);
+    // The last 50, oldest first: enough context for a reply.
+    const rows = (await db.query(`SELECT ${MESSAGE_COLUMNS} FROM messages m WHERE m.user_id = $1 AND ($2 OR m.urgent) AND m.kind <> 'location' ORDER BY m.id DESC LIMIT 50`, [girlId, c.messages])).reverse();
     await logAccess(db, req, girlId, "messages");
     res.json({ consents: c, messages: rows.map((m) => toWorkerMessage(m, w.id, c.voice)) });
   });
