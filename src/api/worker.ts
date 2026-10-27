@@ -83,7 +83,7 @@ export function workerApi(db: Db): Router {
          JOIN assignments a ON a.girl_id = m.user_id AND a.health_worker_id = $1 AND a.ended_at IS NULL
          JOIN users u ON u.id = m.user_id
         WHERE m.direction = 'in' AND (m.urgent OR ${SHARES("messages")})
-          AND (m.urgent OR (m.body ~ '[[:alpha:]]{3,}' AND upper(btrim(m.body)) NOT IN ('STOP','DELETE','HELP','MENU','DADA')))
+          AND (m.urgent OR (m.body ~ '[[:alpha:]]{3,}' AND upper(btrim(m.body)) NOT IN ('STOP','DELETE','HELP','MENU','DADA','SHARE','VOICE','PRIVATE')))
           AND ($2 = '' OR u.language = $2) AND ($3 = '' OR m.channel = $3) AND ($4 = '' OR m.status = $4)
         ORDER BY m.urgent DESC, m.created_at DESC, m.id DESC LIMIT 200`,
       [w.id, language, channel, status],

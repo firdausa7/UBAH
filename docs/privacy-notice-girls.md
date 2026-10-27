@@ -31,6 +31,7 @@
 **You are in control:**
 - Send **STOP** — no more messages from Ubah.
 - Send **DELETE** — we delete your messages, passes and answers.
+- Send **SHARE** — your health worker can read your messages. **VOICE** — they can also listen to your voice notes. **PRIVATE** — only when you ask for a person (or may be in danger).
 - In the Ubah app: **Wipe my history**, and **Quick exit** to leave at once.
 - Lock the Ubah app with a **PIN** so others can't open it.
 

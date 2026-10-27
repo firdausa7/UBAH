@@ -21,10 +21,12 @@ export async function consents(db: Db, girlId: number): Promise<Record<ConsentSc
   return out;
 }
 
-export async function setConsents(db: Db, girlId: number, next: Partial<Record<ConsentScope, boolean>>) {
+// explicit: record her answer even when it matches the default ("no" is a choice too, and asking for
+// a person later must not override it).
+export async function setConsents(db: Db, girlId: number, next: Partial<Record<ConsentScope, boolean>>, opts: { explicit?: boolean } = {}) {
   const now = await consents(db, girlId);
   for (const scope of ["messages", "voice"] as const) {
-    if (typeof next[scope] === "boolean" && next[scope] !== now[scope]) {
+    if (typeof next[scope] === "boolean" && (opts.explicit || next[scope] !== now[scope])) {
       await db.query(`INSERT INTO consents (user_id, scope, granted) VALUES ($1,$2,$3)`, [girlId, scope, next[scope]]);
     }
   }

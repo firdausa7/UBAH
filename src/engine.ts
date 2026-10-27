@@ -8,7 +8,7 @@ import { search, localize } from "./content/content.js";
 import { nearestClinics, matchPlace, type ClinicPlace } from "./location.js";
 import { transcribe, type MockVoice } from "./providers/speech.js";
 import { toEnglish, type Translation } from "./providers/translation.js";
-import { consents, assignedWorkerId, shareOnRequest } from "./auth/access.js";
+import { consents, assignedWorkerId, setConsents, shareOnRequest } from "./auth/access.js";
 import { saveVoiceNote } from "./voice/store.js";
 import { issuePass, SERVICE_MENU, TOPIC_SERVICES } from "./referrals.js";
 import { sendToUser, alertStaff, flushPending, type UserRow } from "./channels/outbound.js";
@@ -30,7 +30,7 @@ export interface Incoming {
   location?: { lat: number; lng: number; name?: string; address?: string };
 }
 
-type Step = "language" | "free" | "after_answer" | "choose_services" | "checkin_visited" | "checkin_clinic" | "checkin_respect";
+type Step = "language" | "share_messages" | "free" | "after_answer" | "choose_services" | "checkin_visited" | "checkin_clinic" | "checkin_respect";
 interface State {
   step: Step;
   lastServices?: string[];
@@ -70,6 +70,30 @@ const reply = async (db: Db, user: UserRow, body: string): Promise<void> => {
 };
 
 export async function handleIncoming(db: Db, msg: Incoming): Promise<void> {
+  await handleMessage(db, msg);
+  if (msg.voice) await maybeAskVoice(db, msg);
+}
+
+// On WhatsApp and SMS she can't open settings, so she is asked once each: after choosing her
+// language (her messages), and after her first voice note (her voice). The web app has its own switches.
+const ASKED_ON = ["whatsapp", "sms", "simulator"];
+
+async function shouldAskShare(db: Db, user: UserRow, channel: string): Promise<boolean> {
+  if (!ASKED_ON.includes(channel) || (user as any).share_asked_at) return false;
+  const [any] = await db.query(`SELECT 1 FROM consents WHERE user_id = $1 AND scope = 'messages' LIMIT 1`, [user.id]);
+  return !any;
+}
+
+async function maybeAskVoice(db: Db, msg: Incoming) {
+  if (!ASKED_ON.includes(msg.channel) || !msg.from) return;
+  const [user] = await db.query<UserRow & { voice_asked_at: string | null }>(`SELECT * FROM users WHERE phone_hash = $1`, [hashPhone(msg.from)]);
+  if (!user || user.opted_out || user.voice_asked_at || user.state?.step === "language" || user.state?.step === "share_messages") return;
+  const [any] = await db.query(`SELECT 1 FROM consents WHERE user_id = $1 AND scope = 'voice' LIMIT 1`, [user.id]);
+  await db.query(`UPDATE users SET voice_asked_at = now() WHERE id = $1`, [user.id]);
+  if (!any) await say(db, user, "voice_question");
+}
+
+async function handleMessage(db: Db, msg: Incoming): Promise<void> {
   await refreshCaches(db); // published content, translations and glossary
   const { user, isNew } = msg.userId ? await webUser(db, msg.userId) : await getOrCreateUser(db, msg);
   // Her WhatsApp window just opened: first deliver anything held for her.
@@ -111,7 +135,7 @@ export async function handleIncoming(db: Db, msg: Incoming): Promise<void> {
   // Into English, for her health worker and for the second danger check. The whole text is translated
   // (nothing dropped), and the original is kept. When the speech model heard another language than
   // the one she chose, the provider detects it instead of trusting her choice.
-  const words = /\p{L}{3,}/u.test(text) && !/^(STOP|DELETE|HELP|MENU|DADA)$/i.test(text.trim());
+  const words = /\p{L}{3,}/u.test(text) && !/^(STOP|DELETE|HELP|MENU|DADA|SHARE|VOICE|PRIVATE)$/i.test(text.trim());
   const english = words ? await toEnglish(text, user.language, voice?.mismatch ?? false) : null;
   const meta: InboundMeta = { voice, english, audioRef };
 
@@ -165,6 +189,13 @@ export async function handleIncoming(db: Db, msg: Incoming): Promise<void> {
     await db.query(`DELETE FROM outbox WHERE to_hash = $1`, [user.phone_hash]);
     return;
   }
+  // What her health worker may see: SHARE, VOICE, PRIVATE (any time, on any channel).
+  if (cmd === "SHARE" || cmd === "VOICE" || cmd === "PRIVATE") {
+    await logIn(db, user, msg.channel, kind, text, null, meta);
+    await setConsents(db, user.id, cmd === "SHARE" ? { messages: true } : cmd === "VOICE" ? { voice: true } : { messages: false, voice: false }, { explicit: true });
+    if (user.state?.step === "share_messages") await setState(db, user, { step: "free" });
+    return say(db, user, cmd === "SHARE" ? "share_yes" : cmd === "VOICE" ? "voice_on" : "private_on");
+  }
   if (cmd === "HELP") {
     await logIn(db, user, msg.channel, kind, text, null, meta);
     return say(db, user, "help");
@@ -184,8 +215,24 @@ export async function handleIncoming(db: Db, msg: Incoming): Promise<void> {
     if (!lang) return say(db, user, "welcome");
     user.language = lang;
     await db.query(`UPDATE users SET language = $2 WHERE id = $1`, [user.id, lang]);
+    if (await shouldAskShare(db, user, msg.channel)) {
+      await db.query(`UPDATE users SET share_asked_at = now() WHERE id = $1`, [user.id]);
+      await setState(db, user, { step: "share_messages" });
+      await say(db, user, "language_set");
+      return say(db, user, "share_question");
+    }
     await setState(db, user, { step: "free" });
     return say(db, user, "language_set");
+  }
+  // Her answer to the sharing question. Anything else is her first question: she is not asked again,
+  // and her messages stay private (no answer means no).
+  if (state.step === "share_messages") {
+    await setState(db, user, { step: "free" });
+    if (text === "1" || text === "2") {
+      await logIn(db, user, msg.channel, kind, text, null, meta);
+      await setConsents(db, user.id, { messages: text === "1" }, { explicit: true });
+      return say(db, user, text === "1" ? "share_yes" : "share_no");
+    }
   }
   if (state.step === "checkin_visited" || state.step === "checkin_clinic" || state.step === "checkin_respect") {
     await logIn(db, user, msg.channel, kind, text, null, meta);
