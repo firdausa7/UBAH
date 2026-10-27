@@ -237,7 +237,10 @@ describe("voice notes: private, short-lived links", () => {
 
     // Another worker can't use the link; a changed link doesn't work.
     expect((await (await staff("dada")).get(m.audioUrl)).status).toBe(403);
-    expect((await nurse.get(m.audioUrl.replace(/sig=./, "sig=x"))).status).toBe(403);
+    // Tamper with the signature: always a different first character.
+    const tampered = m.audioUrl.replace(/sig=(.)/, (_: string, c: string) => `sig=${c === "A" ? "B" : "A"}`);
+    expect(tampered).not.toBe(m.audioUrl);
+    expect((await nurse.get(tampered)).status).toBe(403);
     const exp = Number(new URL(m.audioUrl, "http://x").searchParams.get("exp"));
     const sig = new URL(m.audioUrl, "http://x").searchParams.get("sig");
     expect(checkAudioSignature(noteId, await staffId("nurse"), exp, sig, (exp + 1) * 1000)).toBe(false);
