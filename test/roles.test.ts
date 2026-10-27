@@ -289,3 +289,38 @@ describe("voice notes: private, short-lived links", () => {
     expect((await db.query(`SELECT 1 FROM voice_notes WHERE id = $1`, [noteId])).length).toBe(0);
   });
 });
+
+describe("the access log records looks, not screen refreshes", () => {
+  it("logs one line per girl when the inbox refreshes, and a new line for a new look later", async () => {
+    const { user } = await webGirl("0712555050");
+    const admin = await staff("admin");
+    await admin.put(`/api/admin/girls/${user.id}/assignment`).set(H).send({ workerId: await staffId("nurse") });
+    const nurse = await staff("nurse");
+    const lines = async () => (await db.query(`SELECT count(*)::int AS n FROM access_log WHERE girl_id = $1 AND staff_login = 'nurse' AND what = 'profile'`, [user.id]))[0].n;
+    for (let i = 0; i < 5; i++) await nurse.get("/api/worker/girls");
+    expect(await lines()).toBe(1);
+  });
+
+  it("still logs each different thing looked at: her messages, and each message opened", async () => {
+    const { a: girlAgent, user } = await webGirl("0712555051");
+    await girlAgent.put("/api/me/consents").set(H).send({ messages: true });
+    const ids = [];
+    for (const body of ["first question", "second question"]) {
+      const [m] = await db.query(`INSERT INTO messages (user_id, direction, channel, body) VALUES ($1,'in','web',$2) RETURNING id`, [user.id, body]);
+      ids.push(m.id);
+    }
+    const admin = await staff("admin");
+    await admin.put(`/api/admin/girls/${user.id}/assignment`).set(H).send({ workerId: await staffId("nurse") });
+    const nurse = await staff("nurse");
+    await nurse.get(`/api/worker/girls/${user.id}/messages`);
+    await nurse.get(`/api/worker/girls/${user.id}/messages`);
+    for (const id of ids) await nurse.get(`/api/worker/messages/${id}`);
+    await nurse.get(`/api/worker/messages/${ids[0]}`);
+    const log = await db.query(`SELECT what, target_id FROM access_log WHERE girl_id = $1 AND staff_login = 'nurse' AND what IN ('messages','message') ORDER BY id`, [user.id]);
+    expect(log).toEqual([
+      { what: "messages", target_id: null },
+      { what: "message", target_id: String(ids[0]) },
+      { what: "message", target_id: String(ids[1]) },
+    ]);
+  });
+});

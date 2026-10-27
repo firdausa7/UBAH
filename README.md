@@ -202,7 +202,7 @@ Girls stay in `users` and staff in `staff`: a girl who signs in on the web with 
 
 - **Assignments** (`/api/admin`): an admin assigns each girl to one nurse or Dada. Admins see who looks after whom, never her messages. Until a girl is assigned, her everyday messages wait (urgent ones always reach the nurses), so `/admin` shows how many have no worker and offers **Assign them by language**: each goes to a nurse or Dada who speaks her language (set under Staff tools → Admin), whoever has the fewest girls; those whose language no worker speaks are listed for assigning by hand.
 - **Consent** (`/api/me/consents`): she chooses whether her health worker sees her messages, and whether they can listen to her voice notes. She can change her mind at any time. **Urgent messages always reach a human**, whatever she chose.
-- **Access log**: every time a worker or admin looks at a girl's data (profile, messages, a voice note), `access_log` records who, which girl, what and when. Append-only, never the content.
+- **Access log**: every time a worker or admin looks at a girl's data (profile, messages, a voice note), `access_log` records who, which girl, what and when. Append-only, never the content. It records looks, not screen refreshes: the same person seeing the same thing about the same girl within 10 minutes is one line.
 - **Voice notes** are kept only if she shares her voice: encrypted in the database, playable only through a link made for her assigned worker that works for 5 minutes, and deleted when the message is resolved or after 30 days (`src/voice/store.ts`, run by the housekeeping in the 15-minute background sweep).
 - API errors are bare JSON codes (`{"error":"not_found"}`); nothing about a girl appears in error messages or logs.
 

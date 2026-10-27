@@ -65,9 +65,19 @@ export async function isAssigned(db: Db, workerId: number, girlId: number): Prom
 
 export type AccessWhat = "profile" | "messages" | "message" | "voice";
 
+// One line per look, not per screen refresh: the same person seeing the same thing about the same girl
+// within 10 minutes is the same look (the inbox refreshes every few seconds).
+const SAME_LOOK_MINUTES = 10;
+
 export async function logAccess(db: Db, req: Request, girlId: number, what: AccessWhat, targetId?: string | number) {
   const s = (req as any).staff as { id: number; login: string } | undefined;
   try {
+    const [seen] = await db.query(
+      `SELECT 1 FROM access_log WHERE girl_id = $1 AND staff_id IS NOT DISTINCT FROM $2 AND what = $3 AND target_id IS NOT DISTINCT FROM $4
+          AND at > now() - make_interval(mins => $5) LIMIT 1`,
+      [girlId, s?.id ?? null, what, targetId == null ? null : String(targetId), SAME_LOOK_MINUTES],
+    );
+    if (seen) return;
     await db.query(`INSERT INTO access_log (staff_id, staff_login, girl_id, what, target_id, ip) VALUES ($1,$2,$3,$4,$5,$6)`, [
       s?.id ?? null,
       s?.login ?? null,
