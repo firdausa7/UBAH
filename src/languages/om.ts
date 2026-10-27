@@ -10,8 +10,9 @@ export const om: LanguageConfig = {
   status: "beta",
   // MMS has several Oromo varieties: gaz (West Central), hae (Eastern), gax (Borana-Arsi-Guji, spoken
   // in northern Kenya). Check which ones the MMS model card lists, and which your speakers use; set
-  // STT_OM_LANGUAGE to change it without touching the code.
-  stt: { code: "om", provider: "mock", mmsCode: "gaz" },
+  // STT_OM_LANGUAGE to change it without touching the code. Google lists no Oromo for Chirp that we could
+  // confirm: om-ET is a guess to try, not a promise.
+  stt: { code: "om", provider: "mock", mmsCode: "gaz", googleCode: "om-ET" },
   translation: { code: "om", provider: "google" },
   ttsVoiceId: null,
   dangerWordsFile: "om.txt",

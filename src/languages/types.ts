@@ -8,7 +8,8 @@ export interface LanguageConfig {
   englishName: string; // for workers
   status: LanguageStatus; // disabled: never shown; beta: shown to girls, labelled "Beta" for workers only
   // provider: the default; STT_<LANG>_PROVIDER overrides it. mmsCode: the ISO 639-3 code a Meta MMS server uses.
-  stt: { code: string; provider: "openai" | "mms" | "mock"; mmsCode: string };
+  // googleCode: the BCP-47 code Google Speech-to-Text (Chirp) uses.
+  stt: { code: string; provider: "openai" | "mms" | "google" | "mock"; mmsCode: string; googleCode: string };
   translation: { code: string; provider: "google" | "mock" } | null; // null: no translation step (English)
   ttsVoiceId: string | null; // an approved ElevenLabs voice, or null
   dangerWordsFile: string; // relative to data/danger/

@@ -1,4 +1,5 @@
 import { describe, it, expect, afterEach, vi } from "vitest";
+import { createVerify, generateKeyPairSync } from "node:crypto";
 import { config, loadConfig, ConfigError } from "../src/config.js";
 import { mmsSpeech, mockSpeech, openAISpeech, speechProviderFor, speechSettingsFor, transcribe } from "../src/providers/speech.js";
 
@@ -94,5 +95,64 @@ describe("speech-to-text settings per language", () => {
     expect(calls[0].url).toBe("https://stt.example.org/v1/audio/transcriptions");
     expect((calls[0].init.body as FormData).get("model")).toBe("gpt-4o-transcribe");
     expect((calls[0].init.headers as Record<string, string>).authorization).toBe("Bearer sk-sw");
+  });
+});
+
+describe("Google Speech-to-Text (Chirp) with a service account", () => {
+  const { privateKey, publicKey } = generateKeyPairSync("rsa", { modulusLength: 2048 });
+  const sa = { client_email: "ubah-stt@test-project.iam.gserviceaccount.com", private_key: privateKey.export({ type: "pkcs8", format: "pem" }).toString(), project_id: "test-project" };
+  const savedGoogle = { ...config.stt.google };
+  afterEach(async () => {
+    Object.assign(config.stt.google, savedGoogle);
+    (await import("../src/providers/googleAuth.js")).forgetGoogleToken();
+  });
+
+  function google() {
+    config.stt.google.credentialsJson = JSON.stringify(sa);
+    config.stt.google.location = "eu";
+    config.stt.perLanguage.sw = { provider: "google" };
+  }
+
+  it("signs in with the service account, then sends a Kiswahili note to Chirp in sw-KE", async () => {
+    google();
+    expect(speechProviderFor("sw").name).toBe("google");
+    expect(speechSettingsFor("sw")).toMatchObject({ language: "sw-KE", model: "chirp_3", baseUrl: "https://eu-speech.googleapis.com" });
+    const calls = network(
+      { status: 200, body: { access_token: "ya29.test", expires_in: 3600 } },
+      { status: 200, body: { results: [{ alternatives: [{ transcript: "Hedhi yangu", confidence: 0 }], languageCode: "sw-ke" }, { alternatives: [{ transcript: "imechelewa" }] }] } },
+      { status: 200, body: { results: [{ alternatives: [{ transcript: "Habari", confidence: 0.9 }] }] } },
+    );
+    const tr = await transcribe(Buffer.from("OggS voice"), "audio/ogg", "sw");
+    expect(tr).toEqual({ text: "Hedhi yangu imechelewa", ok: true, language: "sw", confidence: null }); // Chirp's 0 means "not given"
+
+    // The login: a JWT signed with the service account's key, for the cloud-platform scope.
+    expect(calls[0].url).toBe("https://oauth2.googleapis.com/token");
+    const assertion = new URLSearchParams(String(calls[0].init.body)).get("assertion")!;
+    const [h, c, sig] = assertion.split(".");
+    expect(createVerify("RSA-SHA256").update(`${h}.${c}`).verify(publicKey, Buffer.from(sig, "base64url"))).toBe(true);
+    expect(JSON.parse(Buffer.from(c, "base64url").toString())).toMatchObject({ iss: sa.client_email, scope: "https://www.googleapis.com/auth/cloud-platform" });
+
+    // The request: inline audio, the model and language given.
+    expect(calls[1].url).toBe("https://eu-speech.googleapis.com/v2/projects/test-project/locations/eu/recognizers/_:recognize");
+    expect((calls[1].init.headers as Record<string, string>).authorization).toBe("Bearer ya29.test");
+    const body = JSON.parse(String(calls[1].init.body));
+    expect(body.config).toMatchObject({ model: "chirp_3", languageCodes: ["sw-KE"] });
+    expect(Buffer.from(body.content, "base64").toString()).toBe("OggS voice");
+
+    // The token is reused until it nearly expires.
+    expect((await transcribe(Buffer.from("x"), "audio/ogg", "sw")).confidence).toBe(0.9);
+    expect(calls).toHaveLength(3);
+  });
+
+  it("is not used until the service account and region are set, and fails safely", async () => {
+    config.stt.perLanguage.sw = { provider: "google" };
+    expect(speechProviderFor("sw").name).toBe("mock");
+    google();
+    network({ status: 403 });
+    expect(await transcribe(Buffer.from("x"), "audio/ogg", "sw")).toEqual({ text: "", ok: false, language: null, confidence: null });
+  });
+
+  it("refuses production with a Google language but no service account", () => {
+    expect(() => loadConfig({ NODE_ENV: "production", STT_SW_PROVIDER: "google" })).toThrow(/STT_GOOGLE_LOCATION and STT_GOOGLE_CREDENTIALS/);
   });
 });

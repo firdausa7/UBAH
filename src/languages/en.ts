@@ -6,7 +6,7 @@ export const en: LanguageConfig = {
   name: "English",
   englishName: "English",
   status: "enabled",
-  stt: { code: "en", provider: "openai", mmsCode: "eng" },
+  stt: { code: "en", provider: "openai", mmsCode: "eng", googleCode: "en-KE" },
   translation: null,
   ttsVoiceId: null,
   dangerWordsFile: "en.txt",

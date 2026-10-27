@@ -38,7 +38,7 @@ if (!mock) {
   if (unset.length || mockMode.translate()) {
     console.error(
       [
-        unset.length ? `No real speech-to-text for: ${unset.map((l) => `${l} (${speechSettingsFor(l).provider}: ${speechSettingsFor(l).provider === "mms" ? `set STT_${l.toUpperCase()}_BASE_URL` : "set STT_API_KEY"})`).join(", ")}.` : "",
+        unset.length ? `No real speech-to-text for: ${unset.map((l) => `${l} (${speechSettingsFor(l).provider}: ${{ mms: `set STT_${l.toUpperCase()}_BASE_URL`, google: "set STT_GOOGLE_LOCATION and STT_GOOGLE_CREDENTIALS", openai: "set STT_API_KEY", mock: "choose a provider" }[speechSettingsFor(l).provider]})`).join(", ")}.` : "",
         mockMode.translate() ? "No translation key: set GOOGLE_TRANSLATE_API_KEY." : "",
         "Or run with --mock to check the CSV and the danger lists only.",
       ]
@@ -66,7 +66,7 @@ if (!results.length) {
 }
 const describe = (l: string) => {
   const s = speechSettingsFor(l);
-  return `${l} ${s.provider}${s.provider === "mock" ? "" : ` ${s.model}${s.provider === "mms" ? ` (${s.language})` : ""}`}`;
+  return `${l} ${s.provider}${s.provider === "mock" ? "" : ` ${s.model}${s.provider === "mms" || s.provider === "google" ? ` (${s.language})` : ""}`}`;
 };
 const report = reportMarkdown(results, { at: new Date().toISOString(), mock, stt: mock ? "mock" : langs.map(describe).join(", "), translation: mock ? "mock" : "Google Cloud Translation" });
 const out = join(dir, providerArg ? `report-${providerArg.replace(/[^a-z=,]/g, "").replace(/[=,]/g, "-")}.md` : "report.md");

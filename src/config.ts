@@ -62,6 +62,12 @@ const EnvSchema = z.object({
   ELEVENLABS_API_KEY: z.string().default(""),
   ELEVENLABS_BASE_URL: z.string().default("https://api.elevenlabs.io"),
   ELEVENLABS_MODEL: z.string().default("eleven_multilingual_v2"),
+  // Google Speech-to-Text v2 (Chirp), for languages set to the "google" provider: a service-account key
+  // (a file path, or the JSON itself for hosts without files) and a region where Chirp 3 runs.
+  STT_GOOGLE_CREDENTIALS: z.string().optional(),
+  STT_GOOGLE_CREDENTIALS_JSON: z.string().optional(),
+  STT_GOOGLE_LOCATION: z.string().regex(/^[a-z0-9-]+$/, { message: "a region such as eu or us" }).optional(),
+  STT_GOOGLE_MODEL: z.string().default("chirp_3"),
   STT_MIN_CONFIDENCE: z.coerce.number({ message: "must be a number" }).min(0).max(1).default(0.4),
 
   WHATSAPP_TOKEN: z.string().default(""),
@@ -137,10 +143,10 @@ export class ConfigError extends Error {
 }
 
 // Speech-to-text per language, so each can use the provider that measures best on real voice notes:
-//   STT_<LANG>_PROVIDER  openai | mms | mock   (default: the language's config in src/languages/)
+//   STT_<LANG>_PROVIDER  openai | mms | google | mock   (default: the language's config in src/languages/)
 //   STT_<LANG>_BASE_URL, STT_<LANG>_API_KEY, STT_<LANG>_MODEL   (default: STT_BASE_URL, STT_API_KEY, STT_MODEL)
 //   STT_<LANG>_LANGUAGE  the code sent to the provider (e.g. an MMS code such as som or gaz)
-export const STT_PROVIDERS = ["openai", "mms", "mock"] as const;
+export const STT_PROVIDERS = ["openai", "mms", "google", "mock"] as const;
 const SttOverride = z.object({
   PROVIDER: z.enum(STT_PROVIDERS, { message: `must be one of ${STT_PROVIDERS.join(", ")}` }).optional(),
   BASE_URL: z.string().optional(),
@@ -207,7 +213,8 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     // AI: any OpenAI-compatible API (OpenAI, or an open-weight model served by vLLM / Ollama).
     llm: { baseUrl: e.LLM_BASE_URL, apiKey: e.LLM_API_KEY, model: e.LLM_MODEL },
     // Speech-to-text: any OpenAI-compatible /audio/transcriptions endpoint (Whisper, or a self-hosted MMS server).
-    stt: { baseUrl: e.STT_BASE_URL ?? e.LLM_BASE_URL, apiKey: e.STT_API_KEY ?? e.LLM_API_KEY, model: e.STT_MODEL, minConfidence: e.STT_MIN_CONFIDENCE, perLanguage: perLanguageStt.values },
+    stt: { baseUrl: e.STT_BASE_URL ?? e.LLM_BASE_URL, apiKey: e.STT_API_KEY ?? e.LLM_API_KEY, model: e.STT_MODEL, minConfidence: e.STT_MIN_CONFIDENCE, perLanguage: perLanguageStt.values,
+      google: { credentialsPath: e.STT_GOOGLE_CREDENTIALS ?? "", credentialsJson: e.STT_GOOGLE_CREDENTIALS_JSON ?? "", location: e.STT_GOOGLE_LOCATION ?? "", model: e.STT_GOOGLE_MODEL } },
     translate: { apiKey: e.GOOGLE_TRANSLATE_API_KEY, baseUrl: e.GOOGLE_TRANSLATE_BASE_URL },
     voiceReplies: { enabled: e.VOICE_REPLIES, apiKey: e.ELEVENLABS_API_KEY, baseUrl: e.ELEVENLABS_BASE_URL, model: e.ELEVENLABS_MODEL },
 
@@ -298,6 +305,9 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     if (!cfg.translate.apiKey && !staging) problems.push("GOOGLE_TRANSLATE_API_KEY must be set: workers read girls' messages in English");
     for (const [code, o] of Object.entries(cfg.stt.perLanguage)) {
       if (o.provider === "mms" && !o.baseUrl) problems.push(`STT_${code.toUpperCase()}_PROVIDER is mms but STT_${code.toUpperCase()}_BASE_URL (your MMS server) is not set`);
+      if (o.provider === "google" && !(cfg.stt.google.location && (cfg.stt.google.credentialsPath || cfg.stt.google.credentialsJson))) {
+        problems.push(`STT_${code.toUpperCase()}_PROVIDER is google but STT_GOOGLE_LOCATION and STT_GOOGLE_CREDENTIALS (or _JSON) are not both set`);
+      }
     }
     if (cfg.voiceReplies.enabled && !cfg.voiceReplies.apiKey) problems.push("VOICE_REPLIES is on but ELEVENLABS_API_KEY is not set");
     if (!publicUrl || !cfg.baseUrl.startsWith("https://")) problems.push("BASE_URL must be the public https:// address");

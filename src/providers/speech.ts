@@ -1,10 +1,12 @@
 import { config } from "../config.js";
+import { googleAccessToken, serviceAccount } from "./googleAuth.js";
 import { log } from "../log.js";
 import { ALL_LANGUAGES, languageConfig } from "../languages/index.js";
 
 // Speech-to-text for voice notes, behind one interface:
 //   openai  any OpenAI-compatible /audio/transcriptions endpoint (OpenAI, or a self-hosted Whisper server)
 //   mms     a self-hosted Meta MMS server (tools/mms-server/), for languages Whisper lacks (Afaan Oromoo)
+//   google  Google Speech-to-Text v2 (Chirp), with a service-account key; confirmed for Kiswahili (sw-KE)
 //   mock    no network: development, tests, and languages with no real provider yet
 // Each language picks its own provider: src/languages/<lang>.ts, overridden by STT_<LANG>_* settings
 // (see .env.example), so each can use whichever measures best on real voice notes (npm run eval:languages).
@@ -21,7 +23,7 @@ export interface Transcript {
 }
 
 export interface SpeechSettings {
-  provider: "openai" | "mms" | "mock";
+  provider: "openai" | "mms" | "google" | "mock";
   baseUrl: string;
   apiKey: string;
   model: string;
@@ -29,7 +31,7 @@ export interface SpeechSettings {
 }
 
 export interface SpeechProvider {
-  name: "openai" | "mms" | "mock";
+  name: "openai" | "mms" | "google" | "mock";
   transcribe(audio: Buffer, mimeType: string, hint: string | null, mock: MockVoice, settings: SpeechSettings): Promise<Transcript>;
 }
 
@@ -136,11 +138,61 @@ export const mmsSpeech: SpeechProvider = {
   },
 };
 
+// Google Speech-to-Text v2 (Chirp). The note is sent inline (Google takes up to about a minute this
+// way); a longer one fails and she is asked to try again or type. The language is given (sw-KE …).
+export const googleSpeech: SpeechProvider = {
+  name: "google",
+  async transcribe(audio, _mimeType, _hint, _mock, s) {
+    try {
+      const sa = serviceAccount();
+      if (!sa) throw new Error("no Google service-account key");
+      const token = await googleAccessToken(sa);
+      const location = config.stt.google.location;
+      const res = await fetch(`${s.baseUrl.replace(/\/$/, "")}/v2/projects/${encodeURIComponent(sa.project_id)}/locations/${encodeURIComponent(location)}/recognizers/_:recognize`, {
+        method: "POST",
+        headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          config: { autoDecodingConfig: {}, model: s.model, languageCodes: [s.language], features: { enableAutomaticPunctuation: true } },
+          content: audio.toString("base64"),
+        }),
+        signal: AbortSignal.timeout(30000),
+      });
+      if (!res.ok) throw new Error(`Google STT HTTP ${res.status}`);
+      const json: any = await res.json();
+      const best = (Array.isArray(json.results) ? json.results : []).map((r: any) => ({ alt: r?.alternatives?.[0], lang: r?.languageCode })).filter((r: any) => r.alt?.transcript);
+      const text = best.map((r: any) => String(r.alt.transcript).trim()).join(" ").trim();
+      // Chirp often reports confidence 0 (not given): treat that as unknown, not as "unclear".
+      const scores = best.map((r: any) => Number(r.alt.confidence)).filter((c: number) => Number.isFinite(c) && c > 0);
+      const lang = best.find((r: any) => r.lang)?.lang;
+      return {
+        text,
+        ok: text.length > 0,
+        language: lang ? detectedCode(String(lang).split("-")[0]) : null,
+        confidence: scores.length ? Math.round((scores.reduce((a: number, b: number) => a + b, 0) / scores.length) * 1000) / 1000 : null,
+      };
+    } catch (err) {
+      log.warn({ err: (err as Error).message }, "speech-to-text (Google) failed");
+      return { text: "", ok: false, language: null, confidence: null };
+    }
+  },
+};
+
+const googleReady = () => Boolean(config.stt.google.location && (config.stt.google.credentialsPath || config.stt.google.credentialsJson));
+
 // The settings one language uses: STT_<LANG>_* first, then its config, then the shared STT_* settings.
 export function speechSettingsFor(lang: string | null | undefined): SpeechSettings {
   const l = languageConfig(lang);
   const o = (l && config.stt.perLanguage[l.code]) || {};
   const provider = o.provider ?? l?.stt.provider ?? "openai";
+  if (provider === "google") {
+    return {
+      provider,
+      baseUrl: o.baseUrl ?? `https://${config.stt.google.location || "eu"}-speech.googleapis.com`,
+      apiKey: "",
+      model: o.model ?? config.stt.google.model,
+      language: o.language ?? l?.stt.googleCode ?? lang ?? "",
+    };
+  }
   return {
     provider,
     baseUrl: o.baseUrl ?? (provider === "mms" ? "" : config.stt.baseUrl),
@@ -150,12 +202,14 @@ export function speechSettingsFor(lang: string | null | undefined): SpeechSettin
   };
 }
 
-// A provider only runs when it is set up: OpenAI needs a key, MMS its server. Otherwise the mock
+// A provider only runs when it is set up: OpenAI needs a key, MMS its server, Google a service
+// account and a region. Otherwise the mock
 // (in production that means "audio unclear, please type").
 export function speechProviderFor(lang: string | null | undefined): SpeechProvider {
   const s = speechSettingsFor(lang);
   if (s.provider === "openai" && s.apiKey) return openAISpeech;
   if (s.provider === "mms" && s.baseUrl) return mmsSpeech;
+  if (s.provider === "google" && googleReady()) return googleSpeech;
   return mockSpeech;
 }
 

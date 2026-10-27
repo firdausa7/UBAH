@@ -6,7 +6,7 @@ export const sw: LanguageConfig = {
   name: "Kiswahili",
   englishName: "Kiswahili",
   status: "enabled",
-  stt: { code: "sw", provider: "openai", mmsCode: "swh" },
+  stt: { code: "sw", provider: "openai", mmsCode: "swh", googleCode: "sw-KE" },
   translation: { code: "sw", provider: "google" },
   ttsVoiceId: null,
   dangerWordsFile: "sw.txt",
