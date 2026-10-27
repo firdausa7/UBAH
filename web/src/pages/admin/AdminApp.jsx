@@ -27,6 +27,7 @@ function Assignments() {
   const [workers, setWorkers] = useState([])
   const [filter, setFilter] = useState('all')
   const [note, setNote] = useState('')
+  const [confirmAuto, setConfirmAuto] = useState(false)
   const load = useCallback(() => Promise.all([api.get('/admin/girls'), api.get('/admin/workers')]).then(([g, w]) => (setGirls(g.girls), setWorkers(w.workers))), [])
   useEffect(() => {
     load()
@@ -40,6 +41,18 @@ function Assignments() {
   }
 
   const shown = (girls ?? []).filter((g) => filter === 'all' || (filter === 'none' ? !g.worker : true))
+  const unassigned = (girls ?? []).filter((g) => !g.worker).length
+  const LANG = { so: 'Soomaali', sw: 'Kiswahili', om: 'Afaan Oromoo', en: 'English' }
+
+  async function assignByLanguage() {
+    setConfirmAuto(false)
+    const r = await api.post('/admin/assign-unassigned')
+    const missing = Object.entries(r.noWorker)
+      .map(([l, n]) => `${LANG[l] ?? l} (${n})`)
+      .join(', ')
+    setNote(`Assigned ${r.assigned} girl${r.assigned === 1 ? '' : 's'} by language.${missing ? ` No health worker speaks: ${missing}. Add the language to a worker in Staff tools → Admin, or assign them by hand.` : ''}`)
+    load()
+  }
   return (
     <main className="mx-auto grid max-w-7xl gap-6 px-5 py-6 lg:grid-cols-[1fr_320px]">
       <section>
@@ -58,6 +71,31 @@ function Assignments() {
             ))}
           </div>
         </div>
+        {unassigned > 0 && (
+          <div className="mb-4 rounded-[24px] bg-blush p-5">
+            <p className="mb-3 text-rose-ink">
+              <strong className="font-medium">
+                {unassigned} girl{unassigned === 1 ? ' has' : 's have'} no health worker yet.
+              </strong>{' '}
+              Their everyday messages wait until someone is assigned; urgent ones always reach the nurses.
+            </p>
+            {confirmAuto ? (
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-[15px] text-plum">Give each to a nurse or Dada who speaks her language, whoever has the fewest girls?</span>
+                <button type="button" className="btn" onClick={assignByLanguage}>
+                  Yes, assign them
+                </button>
+                <button type="button" className="btn-ghost" onClick={() => setConfirmAuto(false)}>
+                  Cancel
+                </button>
+              </div>
+            ) : (
+              <button type="button" className="btn" onClick={() => setConfirmAuto(true)}>
+                Assign them by language
+              </button>
+            )}
+          </div>
+        )}
         {note && (
           <p role="status" className="mb-3 rounded-2xl bg-lavender px-4 py-2 text-[15px]">
             {note}

@@ -58,6 +58,7 @@ export const INVENTORY = [
   "GET /api/admin/girls",
   "GET /api/admin/workers",
   "PUT /api/admin/girls/:id/assignment",
+  "POST /api/admin/assign-unassigned",
   "DELETE /api/admin/girls/:id/assignment",
   "GET /api/audio/:id",
   "GET /login",

@@ -56,6 +56,33 @@ export function adminApi(db: Db): Router {
     res.json({ girlId, workerId });
   });
 
+  // Every unassigned girl to a nurse or Dada who speaks her language, the one with the fewest girls
+  // first. A girl whose language no worker speaks is left for the admin to assign by hand.
+  r.post("/assign-unassigned", async (req, res) => {
+    const girls = await db.query<{ id: number; language: string | null }>(
+      `SELECT u.id, u.language FROM users u WHERE NOT EXISTS (SELECT 1 FROM assignments a WHERE a.girl_id = u.id AND a.ended_at IS NULL) ORDER BY u.created_at`,
+    );
+    const workers = await db.query<{ id: number; languages: string[]; girls: number }>(
+      `SELECT s.id, s.languages, (SELECT count(*)::int FROM assignments a WHERE a.health_worker_id = s.id AND a.ended_at IS NULL) AS girls
+         FROM staff s WHERE s.active AND s.role IN ('nurse','dada') ORDER BY s.id`,
+    );
+    let assigned = 0;
+    const noWorker: Record<string, number> = {};
+    for (const g of girls) {
+      const lang = g.language ?? "en";
+      const w = workers.filter((x) => (x.languages ?? []).includes(lang)).sort((a, b) => a.girls - b.girls || a.id - b.id)[0];
+      if (!w) {
+        noWorker[lang] = (noWorker[lang] ?? 0) + 1;
+        continue;
+      }
+      await db.query(`INSERT INTO assignments (health_worker_id, girl_id, assigned_by) VALUES ($1,$2,$3)`, [w.id, g.id, workerOf(req).id]);
+      w.girls++;
+      assigned++;
+    }
+    await auditReq(db, req, { action: "girl.assign_by_language", targetType: "girl", details: { assigned, noWorker } });
+    res.json({ assigned, noWorker });
+  });
+
   r.delete("/girls/:id/assignment", async (req, res) => {
     const girlId = Number(req.params.id);
     if (!Number.isInteger(girlId)) return res.status(404).json({ error: "girl" });
