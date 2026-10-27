@@ -224,6 +224,23 @@ describe("the girl's own messages API", () => {
     expect((await a.post("/api/me/messages").set(H).send({ text: " " })).status).toBe(400);
   });
 
+  it("turns Ubah's numbered menus into buttons, but never a worker's words", async () => {
+    const { a, user } = await webGirl("0712600022", "en");
+    const res = await a.post("/api/me/messages").set(H).send({ text: "my period is two weeks late, what should i do" });
+    const menu = res.body.messages.at(-1);
+    expect(menu).toMatchObject({ from: "ubah", text: "", options: [{ id: "1", title: "Find a clinic" }, { id: "2", title: "Talk to a Dada" }, { id: "3", title: "Ask another question" }] });
+    // Tapping a button sends its number, like typing it.
+    const tapped = await a.post("/api/me/messages").set(H).send({ text: "3" });
+    expect(tapped.body.messages.at(-1).text).toMatch(/Ask me anything/);
+    await assign(user.id, "nurse");
+    const nurse = await staff("nurse");
+    const m = (await nurse.get("/api/worker/inbox")).body.messages.find((x: any) => x.girl.id === user.id);
+    await nurse.post(`/api/worker/messages/${m.id}/reply`).set(H).send({ english: "Two options:\n1 Rest\n2 Visit the clinic" });
+    const reply = (await a.get("/api/me/messages")).body.messages.at(-1);
+    expect(reply).toMatchObject({ from: "worker", options: [] });
+    expect(reply.text).toContain("1 Rest");
+  });
+
   it("accepts a voice note; with no words heard she is asked to try again", async () => {
     const { a } = await webGirl("0712600021", "so");
     const res = await a.post("/api/me/voice").set(H).set("content-type", "audio/webm").send(Buffer.from("fake audio"));

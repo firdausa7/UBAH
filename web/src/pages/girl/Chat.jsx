@@ -94,34 +94,41 @@ export default function Chat() {
     }
   }
 
-  async function sendText(e) {
-    e.preventDefault()
-    const body = text.trim()
-    if (!body) return
+  // Typed, tapped (a menu button, an example, "Talk to a person"): all the same message to Ubah.
+  async function sendMessage(body) {
+    if (!body) return true
     if (!online) {
       enqueue(body)
       setWaiting(queued())
-      setText('')
-      return
+      return true
     }
     setBusy(true)
     setError('')
     try {
       merge((await api.post(`/me/messages?after=${last}`, { text: body })).messages)
-      setText('')
+      return true
     } catch (err) {
-      if (err instanceof ApiError) setError(t('web_error'))
-      else {
-        // The connection dropped: keep it for later.
-        enqueue(body)
-        setWaiting(queued())
-        setOnline(false)
-        setText('')
+      if (err instanceof ApiError) {
+        setError(t('web_error'))
+        return false
       }
+      // The connection dropped: keep it for later.
+      enqueue(body)
+      setWaiting(queued())
+      setOnline(false)
+      return true
     } finally {
       setBusy(false)
     }
   }
+
+  async function sendText(e) {
+    e.preventDefault()
+    if (await sendMessage(text.trim())) setText('')
+  }
+
+  // Only the newest message's menu can be tapped: older menus no longer apply.
+  const lastUbah = [...messages].reverse().find((m) => m.from !== 'me')
 
   return (
     <>
@@ -129,12 +136,20 @@ export default function Chat() {
         {loaded && messages.length === 0 && (
           <section className="mt-6 rounded-[28px] bg-lavender p-7">
             <h1 className="mb-3 text-[34px] leading-tight">{t('web_chat_title')}</h1>
-            <p className="text-text">{t('web_chat_empty')}</p>
+            <p className="mb-5 text-text">{t('web_chat_empty')}</p>
+            <p className="mb-2 text-[15px] font-medium text-plum">{t('app_ask_examples')}</p>
+            <div className="flex flex-col gap-2">
+              {['app_ex_1', 'app_ex_2', 'app_ex_3', 'app_ex_4'].map((k) => (
+                <button key={k} type="button" disabled={busy} onClick={() => sendMessage(t(k))} className="rounded-2xl bg-white px-4 py-3 text-left text-[16px] text-plum ring-1 ring-hair hover:ring-accent">
+                  {t(k)}
+                </button>
+              ))}
+            </div>
           </section>
         )}
         <ol className="mt-4 flex flex-col gap-3">
           {messages.map((m) => (
-            <Bubble key={m.id} m={m} />
+            <Bubble key={m.id} m={m} onOption={m === lastUbah ? (id) => sendMessage(id) : null} busy={busy} />
           ))}
         </ol>
         {waiting.length > 0 && (
@@ -173,9 +188,13 @@ export default function Chat() {
         ) : (
           <Recorder busy={busy || !online} onAudio={(blob) => send(() => api.upload(`/me/voice?after=${last}`, blob))} />
         )}
-        <p className="mt-3 text-center">
+        <p className="mt-3 flex flex-wrap items-center justify-center gap-x-5 gap-y-1">
           <button type="button" className="text-[15px] font-medium text-accent underline underline-offset-4" onClick={() => setTyping(!typing)}>
             {typing ? t('web_record') : t('web_type')}
+          </button>
+          {/* DADA: the word every channel understands, in every language. */}
+          <button type="button" disabled={busy} className="text-[15px] font-medium text-accent underline underline-offset-4" title={t('app_talk_person_sub')} onClick={() => sendMessage('DADA')}>
+            {t('app_talk_person')}
           </button>
         </p>
       </footer>
@@ -183,7 +202,7 @@ export default function Chat() {
   )
 }
 
-function Bubble({ m }) {
+function Bubble({ m, onOption, busy }) {
   const { t } = useStrings()
   const [english, setEnglish] = useState(false)
   if (m.from === 'me')
@@ -208,7 +227,26 @@ function Bubble({ m }) {
         )}
       </li>
     )
-  return <li className="max-w-[88%] self-start rounded-[20px_20px_20px_4px] bg-plum px-4 py-3 text-[16px] leading-relaxed whitespace-pre-line text-cream">{m.text}</li>
+  return (
+    <li className="flex max-w-[88%] flex-col gap-2 self-start">
+      {m.text && <span className="rounded-[20px_20px_20px_4px] bg-plum px-4 py-3 text-[16px] leading-relaxed whitespace-pre-line text-cream">{m.text}</span>}
+      {m.options?.length > 0 && (
+        <span className="flex flex-col gap-1.5">
+          {m.options.map((o) => (
+            <button
+              key={o.id}
+              type="button"
+              disabled={!onOption || busy}
+              onClick={() => onOption?.(o.id)}
+              className="rounded-2xl bg-white px-4 py-2.5 text-left text-[16px] text-plum ring-1 ring-line hover:ring-accent disabled:text-muted disabled:ring-hair"
+            >
+              {o.title}
+            </button>
+          ))}
+        </span>
+      )}
+    </li>
+  )
 }
 
 // One big button: tap to talk, tap again to send.

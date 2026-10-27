@@ -7,6 +7,7 @@ import { handleIncoming } from "../engine.js";
 import { rateLimit } from "../security/rateLimit.js";
 import { clinicsFor, issuePassFor, lessonsFor, passesFor } from "../girlCare.js";
 import { eraseGirl } from "../erase.js";
+import { parseMenu } from "../channels/menu.js";
 
 // Her conversation as she sees it: her messages, Ubah's answers, and her health worker's replies in
 // her language, with the English the worker wrote available on tap.
@@ -17,16 +18,24 @@ async function conversation(db: Db, girlId: number, after: number) {
       WHERE m.user_id = $1 AND m.id > $2 AND m.kind <> 'location' ORDER BY m.id LIMIT 200`,
     [girlId, after],
   );
-  return rows.map((m) => ({
-    id: m.id,
-    from: m.direction === "in" ? "me" : m.sent_by_staff ? "worker" : "ubah",
-    kind: m.kind,
-    text: m.body,
-    english: m.direction === "out" && m.english_source && m.english_source !== "none" ? m.english_text : null,
-    // A spoken version of her worker's reply (only when voice replies are on and her language has an approved voice).
-    audio: m.voice_ref ? `/api/me/audio/${m.voice_ref}` : null,
-    at: m.created_at,
-  }));
+  return rows.map((m) => {
+    const from = m.direction === "in" ? "me" : m.sent_by_staff ? "worker" : "ubah";
+    // Ubah's numbered menus ("1 Find a clinic…") become buttons, as on WhatsApp. A worker's own
+    // words are never read as a menu.
+    const menu = from === "ubah" ? parseMenu(m.body) : { body: m.body, options: [] };
+    const text = menu.options.length && /^[^\n]{0,40}:\s*$/.test(menu.body) ? "" : menu.options.length ? menu.body : m.body;
+    return {
+      id: m.id,
+      from,
+      kind: m.kind,
+      text,
+      options: menu.options,
+      english: m.direction === "out" && m.english_source && m.english_source !== "none" ? m.english_text : null,
+      // A spoken version of her worker's reply (only when voice replies are on and her language has an approved voice).
+      audio: m.voice_ref ? `/api/me/audio/${m.voice_ref}` : null,
+      at: m.created_at,
+    };
+  });
 }
 
 // /api/me: the girl's own space. She sees only her own data.
