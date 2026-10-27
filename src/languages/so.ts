@@ -6,7 +6,7 @@ export const so: LanguageConfig = {
   name: "Soomaali",
   englishName: "Somali",
   status: "enabled",
-  stt: { code: "so", provider: "openai" },
+  stt: { code: "so", provider: "openai", mmsCode: "som" },
   translation: { code: "so", provider: "google" },
   ttsVoiceId: null,
   dangerWordsFile: "so.txt",

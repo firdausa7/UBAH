@@ -265,13 +265,26 @@ Each sits behind one interface in `src/providers/`, with a mock, so development 
 
 | What | Provider | Setting | Without a key |
 |---|---|---|---|
-| Speech-to-text (`speech.ts`) | OpenAI (or any OpenAI-compatible server) | `STT_API_KEY`, `STT_BASE_URL`, `STT_MODEL` | Mock: real recordings come back "unclear" and she is asked to type |
+| Speech-to-text (`speech.ts`) | OpenAI (or any OpenAI-compatible server); a self-hosted **Meta MMS** server (`tools/mms-server/`) for Afaan Oromoo | `STT_API_KEY`, `STT_BASE_URL`, `STT_MODEL`; per language `STT_<LANG>_PROVIDER`, `_BASE_URL`, `_API_KEY`, `_MODEL`, `_LANGUAGE` | Mock: real recordings come back "unclear" and she is asked to type |
 | Translation (`translation.ts`) | Google Cloud Translation, Basic (v2), API key | `GOOGLE_TRANSLATE_API_KEY` | Mock marks the text (`[so→en] …`). **Required in production** |
 | Spoken replies (`voice.ts`) | ElevenLabs | `VOICE_REPLIES=true`, `ELEVENLABS_API_KEY` | Off by default. Even when on, only for a language with an approved voice (`ttsVoiceId` in `src/languages/<lang>.ts`, none yet); the text is always sent too |
 
 Translation is for understanding only: girls' messages are translated into English for their health worker, and the worker's reply back into her language. Nothing translated is ever sent without a person having written it, and the original is always kept next to the translation. A failed translation keeps the original and says so. For a message that mixes languages, Google detects the language itself and translates the whole text.
 
 To get a Google key: Google Cloud console → APIs & Services → enable **Cloud Translation API** → Credentials → Create API key → restrict it to the Cloud Translation API. Google processes the text outside Kenya: include it in the DPIA.
+
+### Speech-to-text in each language
+
+Each language uses its own speech-to-text provider, set in `src/languages/<lang>.ts` and overridable per language in the environment, so each can use whichever measures best on your recordings:
+
+| Language | Default | Notes |
+|---|---|---|
+| Somali | OpenAI (`whisper-1`, which also gives the detected language and confidence) | Accuracy, especially for Maay, is unverified: measure it, and compare with MMS (`--provider so=mms`) |
+| Kiswahili | OpenAI | Measure it |
+| English | OpenAI | |
+| Afaan Oromoo | none (voice notes come back "unclear, please type") | OpenAI has no Oromo. Run the MMS server (`tools/mms-server/`; check its non-commercial licence) and set `STT_OM_PROVIDER=mms`, `STT_OM_BASE_URL`. Choose the Oromo variety your speakers use (`STT_OM_LANGUAGE`: `gaz`, `hae` or `gax`) |
+
+Compare providers on the same recordings: `npm run eval:languages -- --lang so --provider so=mms` writes its own report (`eval/report-so-mms.md`) beside the default one. MMS needs the language to be given, so it is weaker on notes that mix languages.
 
 ### Testing each language with real voice notes
 

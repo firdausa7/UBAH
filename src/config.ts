@@ -2,6 +2,7 @@
 // Every external service has a "mock" mode so the prototype runs with no accounts.
 // In production, Ubah refuses to start until every safety- and privacy-critical value is set.
 import { z } from "zod";
+import { ALL_LANGUAGES } from "./languages/index.js";
 
 const DEV_HASH = "dev-only-hash-secret-change-me";
 const DEV_SESSION = "dev-only-session-secret-change-me";
@@ -135,6 +136,36 @@ export class ConfigError extends Error {
   }
 }
 
+// Speech-to-text per language, so each can use the provider that measures best on real voice notes:
+//   STT_<LANG>_PROVIDER  openai | mms | mock   (default: the language's config in src/languages/)
+//   STT_<LANG>_BASE_URL, STT_<LANG>_API_KEY, STT_<LANG>_MODEL   (default: STT_BASE_URL, STT_API_KEY, STT_MODEL)
+//   STT_<LANG>_LANGUAGE  the code sent to the provider (e.g. an MMS code such as som or gaz)
+export const STT_PROVIDERS = ["openai", "mms", "mock"] as const;
+const SttOverride = z.object({
+  PROVIDER: z.enum(STT_PROVIDERS, { message: `must be one of ${STT_PROVIDERS.join(", ")}` }).optional(),
+  BASE_URL: z.string().optional(),
+  API_KEY: z.string().optional(),
+  MODEL: z.string().optional(),
+  LANGUAGE: z.string().regex(/^[a-z]{2,3}(-[A-Za-z]{2,4})?$/, { message: "a language code such as so, som or sw-KE" }).optional(),
+});
+export type SttOverrideConfig = { provider?: (typeof STT_PROVIDERS)[number]; baseUrl?: string; apiKey?: string; model?: string; language?: string };
+
+function sttOverrides(env: Record<string, string>): { values: Record<string, SttOverrideConfig>; problems: string[] } {
+  const values: Record<string, SttOverrideConfig> = {};
+  const problems: string[] = [];
+  for (const code of ALL_LANGUAGES.map((l) => l.code)) {
+    const prefix = `STT_${code.toUpperCase()}_`;
+    const raw = Object.fromEntries(Object.entries(env).filter(([k]) => k.startsWith(prefix)).map(([k, v]) => [k.slice(prefix.length), v]));
+    const r = SttOverride.safeParse(raw);
+    if (!r.success) {
+      problems.push(...r.error.issues.map((i) => `${prefix}${i.path.join(".")}: ${i.message}`));
+      continue;
+    }
+    values[code] = { provider: r.data.PROVIDER, baseUrl: r.data.BASE_URL, apiKey: r.data.API_KEY, model: r.data.MODEL, language: r.data.LANGUAGE };
+  }
+  return { values, problems };
+}
+
 export function loadConfig(env: Record<string, string | undefined> = process.env) {
   // Treat empty strings as "not set" so a blank line in .env falls back to the default.
   const cleaned = Object.fromEntries(Object.entries(env).filter(([, v]) => v !== undefined && v !== ""));
@@ -143,6 +174,8 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     throw new ConfigError(parsed.error.issues.map((i) => `${i.path.join(".") || "env"}: ${i.message}`));
   }
   const e = parsed.data;
+  const perLanguageStt = sttOverrides(cleaned as Record<string, string>);
+  if (perLanguageStt.problems.length) throw new ConfigError(perLanguageStt.problems);
   const production = e.NODE_ENV === "production";
   const staging = production && e.DEPLOY_STAGE === "staging";
   const publicUrl = e.BASE_URL ?? e.RENDER_EXTERNAL_URL;
@@ -174,7 +207,7 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     // AI: any OpenAI-compatible API (OpenAI, or an open-weight model served by vLLM / Ollama).
     llm: { baseUrl: e.LLM_BASE_URL, apiKey: e.LLM_API_KEY, model: e.LLM_MODEL },
     // Speech-to-text: any OpenAI-compatible /audio/transcriptions endpoint (Whisper, or a self-hosted MMS server).
-    stt: { baseUrl: e.STT_BASE_URL ?? e.LLM_BASE_URL, apiKey: e.STT_API_KEY ?? e.LLM_API_KEY, model: e.STT_MODEL, minConfidence: e.STT_MIN_CONFIDENCE },
+    stt: { baseUrl: e.STT_BASE_URL ?? e.LLM_BASE_URL, apiKey: e.STT_API_KEY ?? e.LLM_API_KEY, model: e.STT_MODEL, minConfidence: e.STT_MIN_CONFIDENCE, perLanguage: perLanguageStt.values },
     translate: { apiKey: e.GOOGLE_TRANSLATE_API_KEY, baseUrl: e.GOOGLE_TRANSLATE_BASE_URL },
     voiceReplies: { enabled: e.VOICE_REPLIES, apiKey: e.ELEVENLABS_API_KEY, baseUrl: e.ELEVENLABS_BASE_URL, model: e.ELEVENLABS_MODEL },
 
@@ -263,6 +296,9 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     }
     // Without translation a worker can't read a Somali, Kiswahili or Oromo message.
     if (!cfg.translate.apiKey && !staging) problems.push("GOOGLE_TRANSLATE_API_KEY must be set: workers read girls' messages in English");
+    for (const [code, o] of Object.entries(cfg.stt.perLanguage)) {
+      if (o.provider === "mms" && !o.baseUrl) problems.push(`STT_${code.toUpperCase()}_PROVIDER is mms but STT_${code.toUpperCase()}_BASE_URL (your MMS server) is not set`);
+    }
     if (cfg.voiceReplies.enabled && !cfg.voiceReplies.apiKey) problems.push("VOICE_REPLIES is on but ELEVENLABS_API_KEY is not set");
     if (!publicUrl || !cfg.baseUrl.startsWith("https://")) problems.push("BASE_URL must be the public https:// address");
     if (!cfg.databaseUrl) problems.push("DATABASE_URL must point to Postgres (embedded PGlite is for development only)");

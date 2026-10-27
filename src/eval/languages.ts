@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { extname, join } from "node:path";
 import { editDistance, MIME, normalizeTranscript } from "../ai/sttEval.js";
-import { mockSpeech, transcribe } from "../providers/speech.js";
+import { mockSpeech, speechSettingsFor, transcribe } from "../providers/speech.js";
 import { mockTranslation, toEnglish, type Translation } from "../providers/translation.js";
 import { analyseBoth } from "../ml/models.js";
 import { tokenize } from "../ml/text.js";
@@ -94,7 +94,7 @@ export async function evaluateLanguage(language: string, csv: string, audioDir: 
     const audio = existsSync(path) ? readFileSync(path) : Buffer.alloc(0);
     const mime = MIME[extname(row.file).toLowerCase()] ?? "audio/ogg";
     // Mock: the "recording" is heard perfectly, so only the translation and danger steps are exercised.
-    const tr = opts.mock ? await mockSpeech.transcribe(audio, mime, language, { mockText: row.said }) : await transcribe(audio, mime, language);
+    const tr = opts.mock ? await mockSpeech.transcribe(audio, mime, language, { mockText: row.said }, speechSettingsFor(language)) : await transcribe(audio, mime, language);
     const ref = normalizeTranscript(row.said, language);
     const hyp = normalizeTranscript(tr.text, language);
     const english: Translation | null = tr.ok ? (opts.mock ? await mockTranslation.translate(tr.text, "en", language) : await toEnglish(tr.text, language, Boolean(tr.language && tr.language !== language))) : null;

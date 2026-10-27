@@ -7,7 +7,8 @@ export interface LanguageConfig {
   name: string; // in its own language, as girls see it
   englishName: string; // for workers
   status: LanguageStatus; // disabled: never shown; beta: shown to girls, labelled "Beta" for workers only
-  stt: { code: string; provider: "openai" | "mock" };
+  // provider: the default; STT_<LANG>_PROVIDER overrides it. mmsCode: the ISO 639-3 code a Meta MMS server uses.
+  stt: { code: string; provider: "openai" | "mms" | "mock"; mmsCode: string };
   translation: { code: string; provider: "google" | "mock" } | null; // null: no translation step (English)
   ttsVoiceId: string | null; // an approved ElevenLabs voice, or null
   dangerWordsFile: string; // relative to data/danger/
