@@ -3,13 +3,12 @@ import type { Db } from "../db.js";
 import { config } from "../config.js";
 import { en, LANGUAGES, rawString } from "../i18n.js";
 import { hashPhone, randomToken } from "../privacy.js";
-import { handleIncoming, issueAndSend, getOrCreateUser } from "../engine.js";
+import { handleIncoming, getOrCreateUser } from "../engine.js";
+import { clinicsFor, issuePassFor, lessonsFor, passesFor } from "../girlCare.js";
 import { parseMenu } from "../channels/menu.js";
 import { type UserRow } from "../channels/outbound.js";
 import { refreshCaches } from "../caches.js";
-import { localize, servingContent } from "../content/content.js";
-import { clinicRatings } from "../ratings.js";
-import { SERVICES, SERVICE_MENU } from "../referrals.js";
+import { servingContent } from "../content/content.js";
 import { rateLimit } from "../security/rateLimit.js";
 import { log } from "../log.js";
 
@@ -123,69 +122,24 @@ export function appApiRouter(db: Db, opts: { sessionsPerHour?: number; requestsP
   );
 
   r.get("/clinics", auth, async (req: AppReq, res) => {
-    const want = String(req.query.services ?? "").split(",").filter((s) => s in SERVICES);
-    const [clinics, ratings] = await Promise.all([
-      db.query(`SELECT c.id, c.name, c.area, c.hours, c.services, c.free, c.verified, s.name AS site FROM clinics c LEFT JOIN sites s ON s.id = c.site_id WHERE c.active ORDER BY c.verified DESC, c.name`),
-      clinicRatings(db),
-    ]);
-    const list = clinics
-      .map((c) => ({ c, overlap: want.filter((s) => c.services.includes(s)).length }))
-      .filter((x) => !want.length || x.overlap > 0)
-      .sort((a, b) => b.overlap - a.overlap)
-      .map(({ c }) => ({ id: c.id, name: c.name, area: c.area, site: c.site, hours: c.hours, free: c.free, verified: c.verified, services: c.services, rating: ratings.get(c.id) ?? null }));
-    res.json({ services: SERVICE_MENU, clinics: list });
+    res.json(await clinicsFor(db, String(req.query.services ?? "").split(",")));
   });
 
   r.post("/passes", auth, async (req: AppReq, res) => {
-    const services = (Array.isArray(req.body?.services) ? req.body.services : []).map(String).filter((s: string) => SERVICE_MENU.includes(s));
-    if (!services.length) return res.status(400).json({ error: "services" });
-    const u = req.appUser!;
-    await refreshCaches(db);
-    await issueAndSend(db, u, services);
-    const [p] = await db.query(`SELECT code FROM passes WHERE user_id = $1 ORDER BY issued_at DESC LIMIT 1`, [u.id]);
-    res.status(p ? 201 : 200).json({ code: p?.code ?? null });
+    const r = await issuePassFor(db, req.appUser!, req.body?.services);
+    if (r === "services") return res.status(400).json({ error: "services" });
+    res.status(r.code ? 201 : 200).json(r);
   });
 
   r.get("/passes", auth, async (req: AppReq, res) => {
-    const rows = await db.query(
-      `SELECT p.code, p.services, p.urgent, p.issued_at, p.expires_at, p.redeemed_at, c.name AS clinic, c.area, c.hours,
-              (SELECT respect FROM checkins ch WHERE ch.pass_code = p.code) AS respect
-         FROM passes p LEFT JOIN clinics c ON c.id = p.suggested_clinic WHERE p.user_id = $1 ORDER BY p.issued_at DESC LIMIT 50`,
-      [req.appUser!.id],
-    );
-    res.json({
-      passes: rows.map((p) => ({
-        code: p.code,
-        services: p.services,
-        urgent: p.urgent,
-        issuedAt: p.issued_at,
-        expiresAt: p.expires_at,
-        valid: !p.redeemed_at && new Date(p.expires_at) > new Date(),
-        redeemed: Boolean(p.redeemed_at),
-        clinic: p.clinic,
-        area: p.area,
-        hours: p.hours,
-        checkedIn: Boolean(p.respect),
-      })),
-    });
+    res.json({ passes: await passesFor(db, req.appUser!.id) });
   });
 
   // Published lessons in her language (else English, marked), for reading and listening offline.
   r.get("/learn", async (req, res) => {
-    await refreshCaches(db);
     const lang = String(req.query.lang ?? "en") in LANGUAGES ? String(req.query.lang) : "en";
-    const lessons = servingContent()
-      .filter((c) => c.language === "en")
-      .map((c) => localize(c, lang))
-      .map(({ item, translated }) => ({ id: item.id, category: item.topic, title: item.title, body: item.body, translated, audio: translated && item.audioMediaId ? `/app/api/audio/${item.audioMediaId}` : null }));
-    // Sections whose topics are still being written: shown as "coming soon" (no text, only the section name).
-    const ready = new Set(lessons.map((l) => l.category));
-    const waiting = await db.query<{ category: string }>(
-      `SELECT DISTINCT t.category FROM content_topics t WHERE NOT t.archived AND NOT EXISTS (SELECT 1 FROM content_versions v WHERE v.topic_id = t.id AND v.status = 'published')`,
-    );
-    const upcoming = waiting.map((w) => w.category).filter((c) => !ready.has(c)).sort();
     res.setHeader("Cache-Control", "no-cache");
-    res.json({ lang, lessons, upcoming, draft: config.allowDraftContent });
+    res.json(await lessonsFor(db, lang));
   });
 
   // Audio only for recordings attached to content that is being served (public health content).

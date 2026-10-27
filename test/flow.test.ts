@@ -269,6 +269,41 @@ describe("the worker inbox", () => {
   });
 });
 
+describe("care, passes and lessons in her space", () => {
+  it("lists clinics for what she needs and gives her a pass in her web chat, never on WhatsApp", async () => {
+    const g = girl(db, "0712600080", "whatsapp");
+    await g.send("hi");
+    await g.send("3");
+    const { a: her } = await webGirl("0712600080", "en");
+    const clinics = (await her.get("/api/me/clinics?services=family_planning")).body;
+    expect(clinics.services).toContain("family_planning");
+    expect(clinics.clinics.length).toBeGreaterThan(0);
+    expect(clinics.clinics.every((c: any) => c.services.includes("family_planning"))).toBe(true);
+    await g.replies();
+
+    const pass = await her.post("/api/me/passes").set(H).send({ services: ["family_planning"] });
+    expect(pass.status).toBe(201);
+    expect(pass.body.code).toMatch(/^UB-/);
+    // Nothing went out on WhatsApp: the pass messages were for her web chat only.
+    const sentSince = await db.query(`SELECT channel, via FROM outbox WHERE to_hash = $1 AND body LIKE '%' || $2 || '%'`, [hashPhone("0712600080"), pass.body.code]);
+    expect(sentSince).toEqual([{ channel: "web", via: "app" }]);
+    expect((await db.query(`SELECT 1 FROM outbox WHERE to_hash = $1 AND channel = 'whatsapp' AND body LIKE '%' || $2 || '%'`, [hashPhone("0712600080"), pass.body.code])).length).toBe(0);
+    const conv = (await her.get("/api/me/messages")).body.messages;
+    expect(conv.some((m: any) => m.from === "ubah" && m.text.includes(pass.body.code))).toBe(true);
+    const passes = (await her.get("/api/me/passes")).body.passes;
+    expect(passes[0]).toMatchObject({ code: pass.body.code, valid: true, services: ["family_planning"] });
+    expect((await her.post("/api/me/passes").set(H).send({ services: ["nonsense"] })).status).toBe(400);
+  });
+
+  it("serves the published lessons in her language", async () => {
+    const { a: her } = await webGirl("0712600081", "en");
+    const learn = (await her.get("/api/me/learn")).body;
+    expect(learn.lang).toBe("en");
+    expect(learn.lessons.length).toBeGreaterThan(0);
+    expect(learn.lessons[0]).toMatchObject({ title: expect.any(String), body: expect.any(String), translated: true });
+  });
+});
+
 describe("spoken replies in her space", () => {
   it("plays her worker's reply when voice replies are on, and only for her", async () => {
     const so = languageConfig("so")!;

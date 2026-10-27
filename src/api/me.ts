@@ -5,6 +5,7 @@ import { girlOf, requireRole } from "../auth/roles.js";
 import { consents, setConsents } from "../auth/access.js";
 import { handleIncoming } from "../engine.js";
 import { rateLimit } from "../security/rateLimit.js";
+import { clinicsFor, issuePassFor, lessonsFor, passesFor } from "../girlCare.js";
 
 // Her conversation as she sees it: her messages, Ubah's answers, and her health worker's replies in
 // her language, with the English the worker wrote available on tap.
@@ -76,6 +77,27 @@ export function meApi(db: Db): Router {
     if (!a) return res.status(404).json({ error: "not_found" });
     res.setHeader("Cache-Control", "no-store");
     res.type(a.mime).send(Buffer.from(a.bytes));
+  });
+
+  // Care: partner clinics for what she needs, and a free pass. The pass message goes into her web
+  // conversation (not to WhatsApp or SMS, where someone else may read her phone).
+  r.get("/clinics", async (req, res) => {
+    res.json(await clinicsFor(db, String(req.query.services ?? "").split(",")));
+  });
+
+  r.post("/passes", sendLimit, async (req, res) => {
+    const result = await issuePassFor(db, { ...girlOf(req), channel: "web" }, req.body?.services);
+    if (result === "services") return res.status(400).json({ error: "services" });
+    res.status(result.code ? 201 : 200).json(result);
+  });
+
+  r.get("/passes", async (req, res) => {
+    res.json({ passes: await passesFor(db, girlOf(req).id) });
+  });
+
+  // Lessons checked by health workers, in her language.
+  r.get("/learn", async (req, res) => {
+    res.json(await lessonsFor(db, girlOf(req).language ?? "en"));
   });
 
   r.get("/messages", async (req, res) => {

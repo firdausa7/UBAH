@@ -87,7 +87,7 @@ export default function Chat() {
         <div ref={end} />
       </main>
 
-      <footer className="sticky bottom-0 border-t border-hair bg-cream/95 px-4 pt-4 pb-[max(1rem,env(safe-area-inset-bottom))] backdrop-blur">
+      <footer className="sticky bottom-14 border-t border-hair bg-cream/95 px-4 pt-4 pb-4 backdrop-blur">
         {error && (
           <p role="alert" className="mb-3 rounded-2xl bg-blush px-4 py-2 text-[15px] text-rose-ink">
             {error}

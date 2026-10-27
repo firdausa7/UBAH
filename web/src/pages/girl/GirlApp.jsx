@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Link, Route, Routes } from 'react-router'
+import { Link, NavLink, Route, Routes } from 'react-router'
 import { api } from '../../lib/api.js'
 import { Waiting } from '../../lib/session.jsx'
 import { StringsProvider, useStrings } from '../../lib/strings.jsx'
@@ -7,6 +7,9 @@ import { Brand } from '../../ui/Brand.jsx'
 import { QuickExit } from '../../ui/QuickExit.jsx'
 import Chat from './Chat.jsx'
 import Settings from './Settings.jsx'
+import Care from './Care.jsx'
+import Passes from './Passes.jsx'
+import Learn from './Learn.jsx'
 
 // The girls' space. Light on purpose: cheap Android phones, slow data. Every word is in her language.
 export default function GirlApp() {
@@ -21,6 +24,9 @@ export default function GirlApp() {
       <Shell>
         <Routes>
           <Route index element={<Chat />} />
+          <Route path="care" element={<Care />} />
+          <Route path="passes" element={<Passes />} />
+          <Route path="learn" element={<Learn />} />
           <Route path="settings" element={<Settings me={me} setMe={setMe} />} />
         </Routes>
       </Shell>
@@ -46,6 +52,35 @@ function Shell({ children }) {
         </div>
       </header>
       {children}
+      <BottomNav />
     </div>
+  )
+}
+
+// Every item has an icon and a word: some girls read little.
+const NAV = [
+  ['/me', 'app_nav_ask', <path key="a" d="M4 5h16v11H8l-4 4z" />],
+  ['/me/care', 'app_nav_care', <path key="c" d="M12 21s-7-4.5-7-11a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 6.5-7 11-7 11z" />],
+  ['/me/passes', 'app_nav_passes', <path key="p" d="M4 7h16v10H4zM8 7v10" />],
+  ['/me/learn', 'app_nav_learn', <path key="l" d="M4 5h7a3 3 0 0 1 3 3v12a2 2 0 0 0-2-2H4zM20 5h-6M20 5v13h-6" />],
+]
+
+function BottomNav() {
+  const { t } = useStrings()
+  return (
+    <nav aria-label="Ubah" className="fixed inset-x-0 bottom-0 z-20 border-t border-hair bg-white/95 pb-[env(safe-area-inset-bottom)] backdrop-blur">
+      <ul className="mx-auto grid max-w-xl grid-cols-4">
+        {NAV.map(([to, key, icon]) => (
+          <li key={to}>
+            <NavLink to={to} end className={({ isActive }) => `flex min-h-14 flex-col items-center justify-center gap-0.5 text-[12px] no-underline ${isActive ? 'font-medium text-accent' : 'text-muted'}`}>
+              <svg viewBox="0 0 24 24" className="h-6 w-6 fill-none stroke-current stroke-[1.8] [stroke-linejoin:round]" aria-hidden="true">
+                {icon}
+              </svg>
+              {t(key)}
+            </NavLink>
+          </li>
+        ))}
+      </ul>
+    </nav>
   )
 }
