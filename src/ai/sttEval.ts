@@ -21,7 +21,7 @@ export interface EvalItem {
   consent_ref?: string;
 }
 
-const MIME: Record<string, string> = { ".ogg": "audio/ogg", ".opus": "audio/ogg", ".mp3": "audio/mpeg", ".m4a": "audio/mp4", ".wav": "audio/wav", ".webm": "audio/webm", ".amr": "audio/amr" };
+export const MIME: Record<string, string> = { ".ogg": "audio/ogg", ".opus": "audio/ogg", ".mp3": "audio/mpeg", ".m4a": "audio/mp4", ".wav": "audio/wav", ".webm": "audio/webm", ".amr": "audio/amr" };
 
 export function normalizeTranscript(s: string, lang: string): string {
   return s

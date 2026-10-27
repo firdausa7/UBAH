@@ -13,3 +13,7 @@ data/stt-eval/
 # Frontend (web/)
 web/node_modules/
 web/dist/
+# Language evaluation: real voices and what people said never go to Git (only the guide and example)
+eval/*
+!eval/README.md
+!eval/example/

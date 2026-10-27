@@ -2,7 +2,7 @@ import type { Db } from "./db.js";
 import { config } from "./config.js";
 import { encryptPhone, hashPhone, newAnonId } from "./privacy.js";
 import { t, LANGUAGE_MENU, hasTranslation } from "./i18n.js";
-import { analyse, type Analysis } from "./ml/models.js";
+import { analyse, analyseBoth, type Analysis } from "./ml/models.js";
 import { expandCodedTerms } from "./ml/glossary.js";
 import { search, localize } from "./content/content.js";
 import { nearestClinics, matchPlace, type ClinicPlace } from "./location.js";
@@ -118,7 +118,7 @@ export async function handleIncoming(db: Db, msg: Incoming): Promise<void> {
   // SAFETY: a danger sign always reaches a human, whatever step she is on (even her very first
   // message, or in the middle of a check-in). Plain numbers and commands are menu answers, not text.
   if (words) {
-    const early = dangerOfBoth(text, user.language, english);
+    const early = analyseBoth(text, user.language, english);
     if (early.danger !== "none") {
       if (user.opted_out) await db.query(`UPDATE users SET opted_out = FALSE WHERE id = $1`, [user.id]);
       user.opted_out = false;
@@ -227,16 +227,6 @@ async function webUser(db: Db, userId: number): Promise<{ user: UserRow; isNew: 
   const [user] = await db.query<UserRow>(`UPDATE users SET last_seen_at = now() WHERE id = $1 RETURNING *`, [userId]);
   if (!user) throw Object.assign(new Error("no such girl"), { status: 404 });
   return { user: { ...user, channel: "web" }, isNew: false };
-}
-
-const SEVERITY = { none: 0, medical: 1, safety: 2, selfharm: 3 } as const;
-
-// Danger words are checked in the original AND in the English translation: either match is urgent.
-function dangerOfBoth(original: string, lang: string | null, english: Translation | null): Analysis {
-  const a = analyse(original, lang);
-  if (!english?.ok || english.provider === "none") return a;
-  const b = analyse(english.text, "en");
-  return SEVERITY[b.danger] > SEVERITY[a.danger] ? { ...b, text: a.text, topic: a.topic ?? b.topic, dangerFromEnglish: true } : a;
 }
 
 interface VoiceInfo {

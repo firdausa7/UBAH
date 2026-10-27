@@ -8,3 +8,6 @@ node_modules
 data/labeled
 test
 *.log
+web/node_modules
+web/dist
+eval

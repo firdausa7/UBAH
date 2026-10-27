@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import { predict, type ModelJson } from "./classifier.js";
 import { expandCodedTerms } from "./glossary.js";
 import { findDangerWords, worstDanger, type DangerMatch } from "./dangerWords.js";
+import type { Translation } from "../providers/translation.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
 export const MODELS_DIR = process.env.MODELS_DIR ?? join(here, "../../models");
@@ -86,4 +87,14 @@ export function analyse(raw: string, lang: string | null = "en"): Analysis {
     }
   }
   return { text, codedTerms: found.map((f) => f.term), topic, topicConfidence, danger, dangerSource, dangerWord };
+}
+
+const SEVERITY = { none: 0, medical: 1, safety: 2, selfharm: 3 } as const;
+
+// Danger words are checked in the original AND in the English translation: either match is urgent.
+export function analyseBoth(original: string, lang: string | null, english: Translation | null): Analysis {
+  const a = analyse(original, lang);
+  if (!english?.ok || english.provider === "none") return a;
+  const b = analyse(english.text, "en");
+  return SEVERITY[b.danger] > SEVERITY[a.danger] ? { ...b, text: a.text, topic: a.topic ?? b.topic, dangerFromEnglish: true } : a;
 }

@@ -1,10 +1,19 @@
 # Ubah production image. Build: docker build -t ubah .
-# Runs TypeScript directly through tsx (no separate build step); runs as the unprivileged "node" user.
+# Runs TypeScript directly through tsx; the React app is built in its own stage and served as static files.
+# Runs as the unprivileged "node" user.
 
 FROM node:22-alpine AS deps
 WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev && npm cache clean --force
+
+# The React app (/login, /me, /worker, /admin), built once into static files.
+FROM node:22-alpine AS web
+WORKDIR /web
+COPY web/package.json web/package-lock.json ./
+RUN npm ci && npm cache clean --force
+COPY web/ ./
+RUN npm run build
 
 FROM node:22-alpine
 ENV NODE_ENV=production \
@@ -18,6 +27,7 @@ COPY migrations ./migrations
 COPY content ./content
 COPY data ./data
 COPY models ./models
+COPY --from=web /web/dist ./web/dist
 USER node
 EXPOSE 3000
 # Liveness only (the process answers). Load balancers should use /health, which also checks the database.

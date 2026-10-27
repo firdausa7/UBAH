@@ -89,6 +89,8 @@ Production (`NODE_ENV=production`) refuses to start until every safety- and priv
 
 ### With Docker on one server
 
+The image builds the React app (`web/`) in its own stage and serves it with the server: one image, one URL.
+
 ```bash
 cp .env.example .env              # fill it in; also set POSTGRES_PASSWORD
 docker compose up -d --build      # app + Postgres 16; migrations run on start
@@ -270,6 +272,19 @@ Each sits behind one interface in `src/providers/`, with a mock, so development 
 Translation is for understanding only: girls' messages are translated into English for their health worker, and the worker's reply back into her language. Nothing translated is ever sent without a person having written it, and the original is always kept next to the translation. A failed translation keeps the original and says so. For a message that mixes languages, Google detects the language itself and translates the whole text.
 
 To get a Google key: Google Cloud console → APIs & Services → enable **Cloud Translation API** → Credentials → Create API key → restrict it to the Cloud Translation API. Google processes the text outside Kenya: include it in the DPIA.
+
+### Testing each language with real voice notes
+
+`npm run eval:languages` runs recorded voice notes through the same steps as a girl's message (transcription → English → danger-word check) and writes `eval/report.md`: urgent messages missed, false alarms, word and character error rates, and the English side by side with the correct meaning for a native speaker to read. Recordings and the expected answers (`eval/audio/<lang>/`, `eval/expected/<lang>.csv`) are git-ignored; every row needs the reference of a signed consent form or it is refused. The format, and how many notes to record, are in `eval/README.md`. Use the report to decide whether a language stays `beta` or becomes `enabled`. `--mock` checks the CSV and the danger lists without any keys.
+
+### Translations with a native speaker (spreadsheet round trip)
+
+```bash
+npm run translations -- export so    # data/strings/so.csv (UI strings) and data/templates/so.csv (answer templates)
+npm run translations -- import so    # the corrected files back, with the checker's name in checked_by
+```
+
+The export lists everything not yet checked in that language: the English, any draft (marked "not checked"), and the `{placeholders}` to keep. A line is only imported with a name in `checked_by`. **UI strings** arrive as a version *in review* noting who checked it; a reviewer approves and publishes it in the Translation studio as before, so nothing reaches girls without that step. **Answer templates** are used as soon as they have a translation and a checker's name.
 
 ### Danger words
 
