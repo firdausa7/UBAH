@@ -53,3 +53,9 @@ services:
         sync: false
       - key: BOOTSTRAP_ADMIN_PASSWORD
         sync: false
+      # Optional keys for real speech-to-text and translation in the test version. Render does not ask
+      # for keys added to a Blueprint after it was created, so add them yourself in the Render
+      # dashboard (Environment). Without them the test version uses the mocks.
+      #   STT_API_KEY                OpenAI speech-to-text (Somali, Kiswahili, English)
+      #   GOOGLE_TRANSLATE_API_KEY   translation (required in production, optional here)
+      #   STT_OM_PROVIDER=mms, STT_OM_BASE_URL, STT_OM_API_KEY, STT_OM_LANGUAGE   Afaan Oromoo via an MMS server

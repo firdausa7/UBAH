@@ -133,6 +133,7 @@ function Bubble({ m }) {
         <span className="whitespace-pre-line" lang={english ? 'en' : undefined}>
           {english && m.english ? m.english : m.text}
         </span>
+        {m.audio && <audio controls preload="none" src={m.audio} className="mt-2 w-full" aria-label={t('web_from_worker')} />}
         {m.english && (
           <button type="button" className="mt-2 block text-[14px] font-medium text-accent underline underline-offset-4" onClick={() => setEnglish(!english)} aria-pressed={english}>
             {english ? t('web_hide_english') : t('web_show_english')}

@@ -10,8 +10,9 @@ import { rateLimit } from "../security/rateLimit.js";
 // her language, with the English the worker wrote available on tap.
 async function conversation(db: Db, girlId: number, after: number) {
   const rows = await db.query<any>(
-    `SELECT id, direction, kind, body, english_text, english_source, sent_by_staff, created_at FROM messages
-      WHERE user_id = $1 AND id > $2 AND kind <> 'location' ORDER BY id LIMIT 200`,
+    `SELECT m.id, m.direction, m.kind, m.body, m.english_text, m.english_source, m.sent_by_staff, m.created_at, r.voice_ref
+       FROM messages m LEFT JOIN replies r ON r.sent_message_id = m.id
+      WHERE m.user_id = $1 AND m.id > $2 AND m.kind <> 'location' ORDER BY m.id LIMIT 200`,
     [girlId, after],
   );
   return rows.map((m) => ({
@@ -20,6 +21,8 @@ async function conversation(db: Db, girlId: number, after: number) {
     kind: m.kind,
     text: m.body,
     english: m.direction === "out" && m.english_source && m.english_source !== "none" ? m.english_text : null,
+    // A spoken version of her worker's reply (only when voice replies are on and her language has an approved voice).
+    audio: m.voice_ref ? `/api/me/audio/${m.voice_ref}` : null,
     at: m.created_at,
   }));
 }
@@ -58,6 +61,21 @@ export function meApi(db: Db): Router {
     for (const k of ["messages", "voice"]) if (k in b && typeof b[k] !== "boolean") return res.status(400).json({ error: k });
     await setConsents(db, g.id, { messages: b.messages, voice: b.voice });
     res.json({ consents: await consents(db, g.id) });
+  });
+
+  // The spoken version of a reply sent to her, and only to her.
+  r.get("/audio/:id", async (req, res) => {
+    const id = Number(req.params.id);
+    const [a] = Number.isInteger(id)
+      ? await db.query<{ mime: string; bytes: Buffer | Uint8Array }>(
+          `SELECT md.mime, md.bytes FROM replies r JOIN messages m ON m.id = r.sent_message_id JOIN media md ON md.id = r.voice_ref
+            WHERE r.voice_ref = $1 AND m.user_id = $2 LIMIT 1`,
+          [id, girlOf(req).id],
+        )
+      : [];
+    if (!a) return res.status(404).json({ error: "not_found" });
+    res.setHeader("Cache-Control", "no-store");
+    res.type(a.mime).send(Buffer.from(a.bytes));
   });
 
   r.get("/messages", async (req, res) => {

@@ -4,6 +4,7 @@ import { freshDb, girl, lastSmsCode, staffClient } from "./helpers.js";
 import { createApp } from "../src/server.js";
 import { handleIncoming } from "../src/engine.js";
 import { config } from "../src/config.js";
+import { languageConfig } from "../src/languages/index.js";
 import { hashPhone } from "../src/privacy.js";
 import { search } from "../src/content/content.js";
 import { useTranslationProvider, type TranslationProvider } from "../src/providers/translation.js";
@@ -265,6 +266,32 @@ describe("the worker inbox", () => {
     const dada = await staff("dada");
     expect((await dada.get(`/api/worker/messages/${sw[0].id}`)).status).toBe(404);
     expect((await dada.post(`/api/worker/messages/${sw[0].id}/reply`).set(H).send({ english: "Hi" })).status).toBe(404);
+  });
+});
+
+describe("spoken replies in her space", () => {
+  it("plays her worker's reply when voice replies are on, and only for her", async () => {
+    const so = languageConfig("so")!;
+    config.voiceReplies.enabled = true;
+    so.ttsVoiceId = "voice-so-test";
+    try {
+      const { a: her, user } = await webGirl("0712600070", "so");
+      await assign(user.id, "nurse");
+      await handleIncoming(db, { channel: "web", from: "", userId: user.id, text: "Caadadaydu way soo daahday" });
+      const nurse = await staff("nurse");
+      const m = (await nurse.get("/api/worker/inbox")).body.messages.find((x: any) => x.girl.id === user.id);
+      await nurse.post(`/api/worker/messages/${m.id}/reply`).set(H).send({ english: "Please visit the clinic." });
+      const reply = (await her.get("/api/me/messages")).body.messages.at(-1);
+      expect(reply.audio).toMatch(/^\/api\/me\/audio\/\d+$/);
+      const played = await her.get(reply.audio);
+      expect(played.status).toBe(200);
+      expect(played.headers["content-type"]).toMatch(/audio\/mpeg/);
+      const { a: other } = await webGirl("0712600071", "so");
+      expect((await other.get(reply.audio)).status).toBe(404);
+    } finally {
+      config.voiceReplies.enabled = false;
+      so.ttsVoiceId = null;
+    }
   });
 });
 

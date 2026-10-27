@@ -269,7 +269,7 @@ Each sits behind one interface in `src/providers/`, with a mock, so development 
 |---|---|---|---|
 | Speech-to-text (`speech.ts`) | OpenAI (or any OpenAI-compatible server); a self-hosted **Meta MMS** server (`tools/mms-server/`) for Afaan Oromoo | `STT_API_KEY`, `STT_BASE_URL`, `STT_MODEL`; per language `STT_<LANG>_PROVIDER`, `_BASE_URL`, `_API_KEY`, `_MODEL`, `_LANGUAGE` | Mock: real recordings come back "unclear" and she is asked to type |
 | Translation (`translation.ts`) | Google Cloud Translation, Basic (v2), API key | `GOOGLE_TRANSLATE_API_KEY` | Mock marks the text (`[so→en] …`). **Required in production** |
-| Spoken replies (`voice.ts`) | ElevenLabs | `VOICE_REPLIES=true`, `ELEVENLABS_API_KEY` | Off by default. Even when on, only for a language with an approved voice (`ttsVoiceId` in `src/languages/<lang>.ts`, none yet); the text is always sent too |
+| Spoken replies (`voice.ts`) | ElevenLabs | `VOICE_REPLIES=true`, `ELEVENLABS_API_KEY` | Off by default. Even when on, only for a language with an approved voice (`ttsVoiceId` in `src/languages/<lang>.ts`, none yet); the text is always sent too. She hears it on WhatsApp, or plays it under the reply in `/me` |
 
 Translation is for understanding only: girls' messages are translated into English for their health worker, and the worker's reply back into her language. Nothing translated is ever sent without a person having written it, and the original is always kept next to the translation. A failed translation keeps the original and says so. For a message that mixes languages, Google detects the language itself and translates the whole text.
 
