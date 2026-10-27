@@ -67,6 +67,10 @@ export default function Settings({ me, setMe }) {
         <p className="mt-4 text-[15px] text-rose-ink">{t('web_share_urgent')}</p>
       </section>
 
+      <Link to="/me/intro" className="btn-quiet self-center">
+        {t('app_intro_title')}
+      </Link>
+
       <button type="button" className="btn-ghost self-center" onClick={async () => (await signOut(), navigate('/login', { replace: true }))}>
         {t('web_sign_out')}
       </button>

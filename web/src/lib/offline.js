@@ -43,6 +43,8 @@ export function forgetEverything() {
   write(sessionStorage, QUEUE, null)
   write(localStorage, GIRL, null)
   write(localStorage, 'ubah:draft', null)
+  write(localStorage, 'ubah:intro-seen', null)
+  write(localStorage, 'ubah:lang', null)
   try {
     navigator.serviceWorker?.controller?.postMessage('forget')
   } catch {

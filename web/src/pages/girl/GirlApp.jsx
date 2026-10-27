@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { Link, NavLink, Route, Routes } from 'react-router'
 import { api, ApiError } from '../../lib/api.js'
 import LockScreen from './LockScreen.jsx'
+import Intro, { introSeen } from './Intro.jsx'
 import { Waiting } from '../../lib/session.jsx'
 import { StringsProvider, savedLanguage, useStrings } from '../../lib/strings.jsx'
 import { registerOffline } from '../../lib/offline.js'
@@ -17,6 +18,7 @@ import Learn from './Learn.jsx'
 export default function GirlApp() {
   const [me, setMe] = useState(null)
   const [locked, setLocked] = useState(false)
+  const [intro, setIntro] = useState(() => !introSeen())
   const reload = useCallback(
     () =>
       api
@@ -46,7 +48,8 @@ export default function GirlApp() {
     <StringsProvider lang={me.language}>
       <Shell>
         <Routes>
-          <Route index element={<Chat />} />
+          <Route index element={intro ? <Intro onDone={() => setIntro(false)} /> : <Chat />} />
+          <Route path="intro" element={<Intro onDone={() => history.back()} />} />
           <Route path="care" element={<Care />} />
           <Route path="passes" element={<Passes />} />
           <Route path="learn" element={<Learn />} />

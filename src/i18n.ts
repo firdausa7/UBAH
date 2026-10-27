@@ -298,6 +298,7 @@ export const en: Strings = {
   web_saved: "Saved",
   web_sign_out: "Sign out",
   web_error: "Something went wrong. Please try again.",
+  web_intro_private: "We never ask your name. Your phone number is kept locked, only to recognise you. Ubah locks itself with your PIN, and Quick exit leaves at once.",
 };
 
 // Languages with a translation step (all but English), including disabled ones so their work is kept.
