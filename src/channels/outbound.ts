@@ -38,6 +38,9 @@ export interface SendOptions {
   audioMediaId?: number | null;
   // Only the "you won't get more messages" confirmation is sent after STOP.
   allowOptedOut?: boolean;
+  // A worker's reply: the English they wrote, kept next to what she receives (shown on tap).
+  englishText?: string | null;
+  englishSource?: "machine" | "template" | "none";
 }
 
 // WhatsApp only allows free-form messages within 24 hours of her last message (minus a safety margin).
@@ -158,8 +161,8 @@ export async function sendToUser(db: Db, user: UserRow, body: string, contentId:
     }
   }
   const [m] = await db.query<{ id: number }>(
-    `INSERT INTO messages (user_id, direction, channel, body, content_id, sent_by_staff, content_version_id) VALUES ($1,'out',$2,$3,$4,$5,$6) RETURNING id`,
-    [user.id, user.channel, body, contentId, sentByStaff, opts.contentVersionId ?? null],
+    `INSERT INTO messages (user_id, direction, channel, body, content_id, sent_by_staff, content_version_id, english_text, english_source) VALUES ($1,'out',$2,$3,$4,$5,$6,$7,$8) RETURNING id`,
+    [user.id, user.channel, body, contentId, sentByStaff, opts.contentVersionId ?? null, opts.englishText ?? null, opts.englishText ? (opts.englishSource ?? "none") : null],
   );
   if (opts.audioMediaId && user.channel === "whatsapp" && waWindowOpen(user) && d.status !== "failed" && d.status !== "held") {
     await sendVoiceAnswer(db, user, opts.audioMediaId);

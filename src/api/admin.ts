@@ -1,7 +1,7 @@
 import { Router } from "express";
 import type { Db } from "../db.js";
 import { auditReq } from "../audit.js";
-import { workerLabel } from "../languages/index.js";
+import { languageConfig, workerLabel } from "../languages/index.js";
 import { requireRole, workerOf } from "../auth/roles.js";
 import { logAccess } from "../auth/access.js";
 
@@ -62,6 +62,27 @@ export function adminApi(db: Db): Router {
     const ended = await db.query(`UPDATE assignments SET ended_at = now() WHERE girl_id = $1 AND ended_at IS NULL RETURNING id`, [girlId]);
     if (ended.length) await auditReq(db, req, { action: "girl.unassign", targetType: "girl", targetId: girlId });
     res.json({ girlId, workerId: null });
+  });
+
+  // Answer templates: the English a worker often writes. A native speaker adds the translation and
+  // their name through the CSV export/import; until then a template is not used.
+  r.get("/templates", async (_req, res) => {
+    const rows = await db.query<any>(`SELECT id, language, english_text, translated_text, reviewed_by FROM answer_templates WHERE active ORDER BY language, english_text`);
+    res.json({ templates: rows.map((t) => ({ id: t.id, language: t.language, english: t.english_text, translated: t.translated_text, reviewedBy: t.reviewed_by })) });
+  });
+
+  r.post("/templates", async (req, res) => {
+    const language = String(req.body?.language ?? "");
+    const english = String(req.body?.english ?? "").trim().slice(0, 1600);
+    if (!languageConfig(language)?.translation) return res.status(400).json({ error: "language" });
+    if (!english) return res.status(400).json({ error: "english" });
+    const [t] = await db.query<{ id: number }>(
+      `INSERT INTO answer_templates (language, english_text, created_by) VALUES ($1,$2,$3) ON CONFLICT (language, lower(english_text)) WHERE active DO NOTHING RETURNING id`,
+      [language, english, workerOf(req).id],
+    );
+    if (!t) return res.status(409).json({ error: "exists" });
+    await auditReq(db, req, { action: "template.create", targetType: "template", targetId: t.id });
+    res.status(201).json({ id: t.id });
   });
 
   return r;

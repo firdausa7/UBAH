@@ -46,6 +46,7 @@ export interface Analysis {
   danger: "none" | "medical" | "safety" | "selfharm";
   dangerSource: "rule" | "list" | "model" | "none";
   dangerWord: DangerMatch | null; // the danger-list entry that matched, for the worker
+  dangerFromEnglish?: boolean; // found in the English translation, not the original
 }
 
 export function analyse(raw: string, lang: string | null = "en"): Analysis {

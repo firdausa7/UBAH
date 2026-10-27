@@ -30,6 +30,13 @@ export async function setConsents(db: Db, girlId: number, next: Partial<Record<C
   }
 }
 
+// Asking for a person (DADA on WhatsApp/SMS/USSD, or "Talk to a person") is her choice to share her
+// messages with her health worker. An earlier "no" she gave in the app is respected.
+export async function shareOnRequest(db: Db, girlId: number) {
+  const [any] = await db.query(`SELECT 1 FROM consents WHERE user_id = $1 AND scope = 'messages' LIMIT 1`, [girlId]);
+  if (!any) await db.query(`INSERT INTO consents (user_id, scope, granted) VALUES ($1,'messages',TRUE)`, [girlId]);
+}
+
 export async function assignedWorkerId(db: Db, girlId: number): Promise<number | null> {
   const [a] = await db.query<{ health_worker_id: number }>(`SELECT health_worker_id FROM assignments WHERE girl_id = $1 AND ended_at IS NULL`, [girlId]);
   return a?.health_worker_id ?? null;

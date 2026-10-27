@@ -11,7 +11,8 @@ This repository started as the **functional prototype** for the UNICEF Femtech V
 | Feature | Where in the code |
 |---|---|
 | Voice notes in Somali (speech-to-text, pluggable model) | `src/ai/stt.ts` |
-| Answers grounded only in approved content — "I don't know" instead of guessing | `src/ai/llm.ts`, `src/content/`, `content/topics/` |
+| Answers only from approved content, sent word for word — "I don't know" instead of guessing; no AI ever writes or rephrases health advice | `src/engine.ts`, `src/content/`, `content/topics/` |
+| Girl → health worker → girl in four languages: transcribed, translated to English, danger-checked twice, answered by a person in English and translated back | `src/engine.ts`, `src/replies.ts`, `src/providers/` |
 | Coded-word glossary ("monthly visitor", "down there") | `data/glossary.json`, `src/ml/glossary.ts` |
 | Ubah's own trained models: danger-sign and topic classifiers, with honest accuracy reports | `src/ml/` |
 | Safety rules that always send self-harm, violence (including a girl at risk of FGM) and medical emergencies to a human | `src/ml/models.ts` |
@@ -117,7 +118,7 @@ npm start
 
 1. **WhatsApp Cloud API** (Meta): set `WHATSAPP_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_APP_SECRET`, and point the webhook to `https://<your-host>/webhooks/whatsapp` with your `WHATSAPP_VERIFY_TOKEN`.
 2. **Africa's Talking SMS**: set `AT_USERNAME`, `AT_API_KEY` (and a sender ID or shortcode), and set the inbound callback to `https://<your-host>/webhooks/sms?key=<SMS_WEBHOOK_KEY>`.
-3. **AI**: any OpenAI-compatible API — `LLM_API_KEY` for OpenAI, or `LLM_BASE_URL` pointing at an open-weight model on vLLM or Ollama.
+3. **Translation**: `GOOGLE_TRANSLATE_API_KEY` (required). **AI first drafts for translators** in the Translation studio (optional): any OpenAI-compatible API — `LLM_API_KEY`, or `LLM_BASE_URL` for an open-weight model. The AI is never used to answer girls.
 4. **Speech-to-text**: `STT_API_KEY` (Whisper), or `STT_BASE_URL` for a self-hosted Whisper / Meta MMS model fine-tuned on Somali.
 5. **Nurse alerts**: `NURSE_ALERT_NUMBERS`.
 6. **USSD** (Africa's Talking, for girls on feature phones and for clinic desks): see [USSD](#ussd).
@@ -156,6 +157,20 @@ Every page is server-rendered, works on a cheap Android phone on 3G, and shows e
 - **Inbox** (`/staff/inbox`): filters (urgent, mine, unassigned, language), claim, assign, return to the queue, internal notes, a full history per case, live updates (server-sent events), and **Escalate to nurse**, which alerts the nurses by SMS. Safety cases show the site's protection checklist (each step recorded) and its referral contacts.
 - **Clinic desk**: the web page, or from the clinic's registered phone with a desk PIN: SMS `CHECK UB-7K42 1234` / `SEEN UB-7K42 1234`, or the USSD menu. Wrong PINs lock the desk like wrong passwords.
 - **Dashboard** (`/staff/dashboard`): date range or presets, site/clinic/language filters, weekly trend charts with a table view, clinic dignity scores, **Download CSV**, **Monthly PDF report**. Counts from 1 to 4 are shown as "<5" everywhere, including exports.
+
+## Message flow: girl → health worker → girl
+
+Every channel (web `/me`, WhatsApp, SMS) goes through the same pipeline, `handleIncoming()` in `src/engine.ts`:
+
+1. **Voice → text.** If she shares her voice, the recording is kept (encrypted) for her worker first, so they can listen even when the transcript is unclear.
+2. **Into English**, the whole text, with her chosen language as the source (or detected by the provider when the speech model heard another language). The original is always kept. A failed translation keeps the original and shows "not translated".
+3. **Danger check on both** the original and the English translation: any match in either is **urgent**. She gets the emergency or clinic referral message at once (and an urgent pass for a medical danger sign), without waiting for a person. Her own health worker **and** every nurse are alerted by SMS, and the case is assigned to her worker.
+4. **Saved** with both texts, detected and chosen language, confidence, and why it was urgent.
+5. **Her worker's inbox** (`/api/worker/inbox`): urgent first, then newest; filters for language, channel and status (new → open → resolved). Only her assigned worker sees it, and only if she shares her messages (urgent always). On WhatsApp and SMS, asking for a person (DADA) is her choice to share; in the app she sets it herself.
+6. **The worker replies in English.** If it matches an answer template a native speaker has checked, she gets that reviewed translation; otherwise it is machine-translated (`translation_source = machine`). English needs neither. If translation fails, nothing is sent and the worker is told. The reply goes back on the channel her message came in on; in the app she sees it in her language, with the English on tap.
+7. **Resolved**: the message is done, and her recording is deleted at once.
+
+Ubah's automatic answers (from approved content) are sent **word for word**: no AI writes or rephrases health advice. Everything else a girl receives was written by a person.
 
 ## One login, three areas (`/login`, `/me`, `/worker`, `/admin`)
 

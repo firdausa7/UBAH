@@ -5,8 +5,10 @@ import { t, LANGUAGE_MENU, hasTranslation } from "./i18n.js";
 import { analyse, type Analysis } from "./ml/models.js";
 import { search, localize } from "./content/content.js";
 import { nearestClinics, matchPlace, type ClinicPlace } from "./location.js";
-import { groundedAnswer } from "./ai/llm.js";
 import { transcribe, type MockVoice } from "./providers/speech.js";
+import { toEnglish, type Translation } from "./providers/translation.js";
+import { consents, assignedWorkerId, shareOnRequest } from "./auth/access.js";
+import { saveVoiceNote } from "./voice/store.js";
 import { issuePass, SERVICE_MENU, TOPIC_SERVICES } from "./referrals.js";
 import { sendToUser, alertStaff, flushPending, type UserRow } from "./channels/outbound.js";
 import { log } from "./log.js";
@@ -18,8 +20,9 @@ import { clinicRatings } from "./ratings.js";
 // from any channel (WhatsApp, SMS, simulator).
 
 export interface Incoming {
-  channel: "whatsapp" | "sms" | "simulator" | "app";
-  from: string; // phone number (never stored in clear)
+  channel: "whatsapp" | "sms" | "simulator" | "app" | "web";
+  from: string; // phone number (never stored in clear); "" for a signed-in web girl
+  userId?: number; // a girl signed in on the web: already known, no phone lookup
   text?: string;
   voice?: { audio: Buffer; mimeType: string } & MockVoice;
   // A shared WhatsApp location. Used once to find the nearest clinic, never stored.
@@ -67,7 +70,7 @@ const reply = async (db: Db, user: UserRow, body: string): Promise<void> => {
 
 export async function handleIncoming(db: Db, msg: Incoming): Promise<void> {
   await refreshCaches(db); // published content, translations and glossary
-  const { user, isNew } = await getOrCreateUser(db, msg);
+  const { user, isNew } = msg.userId ? await webUser(db, msg.userId) : await getOrCreateUser(db, msg);
   // Her WhatsApp window just opened: first deliver anything held for her.
   if (msg.channel === "whatsapp" && !isNew) await flushPending(db, user);
 
@@ -80,8 +83,14 @@ export async function handleIncoming(db: Db, msg: Incoming): Promise<void> {
   let text = (msg.text ?? "").trim();
   let kind = "text";
   let voice: VoiceInfo | null = null;
+  // Her voice is kept for her health worker only if she agreed to share it, so they can listen
+  // when the transcript is unclear.
+  let audioRef: number | null = null;
   if (msg.voice) {
     kind = "voice";
+    if (msg.voice.audio.length > 0 && !isNew && (await consents(db, user.id)).voice) {
+      audioRef = await saveVoiceNote(db, user.id, msg.voice.mimeType, msg.voice.audio);
+    }
     const tr = await transcribe(msg.voice.audio, msg.voice.mimeType, user.language, msg.voice);
     voice = {
       detected: tr.language,
@@ -91,21 +100,28 @@ export async function handleIncoming(db: Db, msg: Incoming): Promise<void> {
       unclear: !tr.ok || (tr.confidence !== null && tr.confidence < config.stt.minConfidence),
     };
     if (!tr.ok) {
-      await logIn(db, user, msg.channel, "voice", "[voice note: not understood]", null, voice);
+      await logIn(db, user, msg.channel, "voice", "[voice note: not understood]", null, { voice, english: null, audioRef });
       if (!isNew) await flagUnclearVoice(db, user, "");
       return say(db, user, "voice_failed");
     }
     text = tr.text;
   }
 
+  // Into English, for her health worker and for the second danger check. The whole text is translated
+  // (nothing dropped), and the original is kept. When the speech model heard another language than
+  // the one she chose, the provider detects it instead of trusting her choice.
+  const words = /\p{L}{3,}/u.test(text) && !/^(STOP|DELETE|HELP|MENU|DADA)$/i.test(text.trim());
+  const english = words ? await toEnglish(text, user.language, voice?.mismatch ?? false) : null;
+  const meta: InboundMeta = { voice, english, audioRef };
+
   // SAFETY: a danger sign always reaches a human, whatever step she is on (even her very first
   // message, or in the middle of a check-in). Plain numbers and commands are menu answers, not text.
-  if (/\p{L}{3,}/u.test(text) && !/^(STOP|DELETE|HELP|MENU|DADA)$/i.test(text.trim())) {
-    const early = analyse(text, user.language);
+  if (words) {
+    const early = dangerOfBoth(text, user.language, english);
     if (early.danger !== "none") {
       if (user.opted_out) await db.query(`UPDATE users SET opted_out = FALSE WHERE id = $1`, [user.id]);
       user.opted_out = false;
-      await logIn(db, user, msg.channel, kind, text, early, voice);
+      await logIn(db, user, msg.channel, kind, text, early, meta);
       return handleDanger(db, user, early, text);
     }
   }
@@ -113,7 +129,7 @@ export async function handleIncoming(db: Db, msg: Incoming): Promise<void> {
   if (isNew || user.opted_out) {
     if (user.opted_out) await db.query(`UPDATE users SET opted_out = FALSE WHERE id = $1`, [user.id]);
     user.opted_out = false;
-    await logIn(db, user, msg.channel, kind, text, null, voice);
+    await logIn(db, user, msg.channel, kind, text, null, meta);
     await setState(db, user, { step: "language" });
     return say(db, user, "welcome");
   }
@@ -121,7 +137,7 @@ export async function handleIncoming(db: Db, msg: Incoming): Promise<void> {
   // A voice note we heard poorly (no danger sign in it): don't act on a guess, and never on a
   // command like DELETE. A worker is told; she is gently asked to try again or type.
   if (voice?.unclear) {
-    await logIn(db, user, msg.channel, kind, text, null, voice);
+    await logIn(db, user, msg.channel, kind, text, null, meta);
     await flagUnclearVoice(db, user, text);
     return say(db, user, "voice_failed");
   }
@@ -129,7 +145,7 @@ export async function handleIncoming(db: Db, msg: Incoming): Promise<void> {
   // Commands that work at any time.
   const cmd = text.toUpperCase();
   if (cmd === "STOP") {
-    await logIn(db, user, msg.channel, kind, text, null, voice);
+    await logIn(db, user, msg.channel, kind, text, null, meta);
     await say(db, user, "stopped");
     await db.query(`UPDATE users SET opted_out = TRUE WHERE id = $1`, [user.id]);
     await db.query(`DELETE FROM pending_outbound WHERE user_id = $1`, [user.id]);
@@ -138,7 +154,7 @@ export async function handleIncoming(db: Db, msg: Incoming): Promise<void> {
   // "NEAR <area or landmark>": find the nearest partner clinic.
   const near = text.match(/^\s*(NEAR|KARIIB|KARIBU|DHIYOO)\s+(.{2,80})$/i);
   if (near) {
-    await logIn(db, user, msg.channel, kind, "[asked for the nearest clinic]", null, voice);
+    await logIn(db, user, msg.channel, kind, "[asked for the nearest clinic]", null, meta);
     return suggestNearest(db, user, { text: near[2] });
   }
   if (cmd === "DELETE") {
@@ -149,11 +165,11 @@ export async function handleIncoming(db: Db, msg: Incoming): Promise<void> {
     return;
   }
   if (cmd === "HELP") {
-    await logIn(db, user, msg.channel, kind, text, null, voice);
+    await logIn(db, user, msg.channel, kind, text, null, meta);
     return say(db, user, "help");
   }
   if (cmd === "MENU") {
-    await logIn(db, user, msg.channel, kind, text, null, voice);
+    await logIn(db, user, msg.channel, kind, text, null, meta);
     await setState(db, user, { step: "language" });
     return say(db, user, "welcome");
   }
@@ -162,7 +178,7 @@ export async function handleIncoming(db: Db, msg: Incoming): Promise<void> {
 
   // Check-in replies are numbers only: don't run them through the classifiers.
   if (state.step === "language") {
-    await logIn(db, user, msg.channel, kind, text, null, voice);
+    await logIn(db, user, msg.channel, kind, text, null, meta);
     const lang = LANGUAGE_MENU.find(([n, code]) => n === text || code === text.toLowerCase())?.[1];
     if (!lang) return say(db, user, "welcome");
     user.language = lang;
@@ -171,13 +187,13 @@ export async function handleIncoming(db: Db, msg: Incoming): Promise<void> {
     return say(db, user, "language_set");
   }
   if (state.step === "checkin_visited" || state.step === "checkin_clinic" || state.step === "checkin_respect") {
-    await logIn(db, user, msg.channel, kind, text, null, voice);
+    await logIn(db, user, msg.channel, kind, text, null, meta);
     return handleCheckinReply(db, user, state, text);
   }
 
   // Free text: understand it first.
   const a = analyse(text, user.language);
-  await logIn(db, user, msg.channel, kind, text, a, voice);
+  await logIn(db, user, msg.channel, kind, text, a, meta);
 
   if (a.danger !== "none") return handleDanger(db, user, a, text);
 
@@ -198,6 +214,30 @@ export async function handleIncoming(db: Db, msg: Incoming): Promise<void> {
   return answerQuestion(db, user, a, text);
 }
 
+interface InboundMeta {
+  voice: VoiceInfo | null;
+  english: Translation | null;
+  audioRef: number | null;
+}
+
+// A girl signed in on the web. Replies to a web message stay on the web, so her channel is set for
+// this message only: her WhatsApp or SMS girl keeps getting check-ins where she reads them.
+async function webUser(db: Db, userId: number): Promise<{ user: UserRow; isNew: boolean }> {
+  const [user] = await db.query<UserRow>(`UPDATE users SET last_seen_at = now() WHERE id = $1 RETURNING *`, [userId]);
+  if (!user) throw Object.assign(new Error("no such girl"), { status: 404 });
+  return { user: { ...user, channel: "web" }, isNew: false };
+}
+
+const SEVERITY = { none: 0, medical: 1, safety: 2, selfharm: 3 } as const;
+
+// Danger words are checked in the original AND in the English translation: either match is urgent.
+function dangerOfBoth(original: string, lang: string | null, english: Translation | null): Analysis {
+  const a = analyse(original, lang);
+  if (!english?.ok || english.provider === "none") return a;
+  const b = analyse(english.text, "en");
+  return SEVERITY[b.danger] > SEVERITY[a.danger] ? { ...b, text: a.text, topic: a.topic ?? b.topic, dangerFromEnglish: true } : a;
+}
+
 interface VoiceInfo {
   detected: string | null;
   confidence: number | null;
@@ -205,11 +245,19 @@ interface VoiceInfo {
   unclear: boolean;
 }
 
-async function logIn(db: Db, user: UserRow, channel: string, kind: string, body: string, a: Analysis | null, voice: VoiceInfo | null = null) {
+async function logIn(db: Db, user: UserRow, channel: string, kind: string, body: string, a: Analysis | null, meta: InboundMeta = { voice: null, english: null, audioRef: null }) {
+  const { voice, english, audioRef } = meta;
+  const urgent = Boolean(a && a.danger !== "none");
+  const reason = !urgent || !a ? null : `${a.dangerSource}${a.dangerWord ? `:${a.dangerWord.language}:${a.dangerWord.phrase}` : ""}${a.dangerFromEnglish ? " (in the English translation)" : ""}`;
   await db.query(
-    `INSERT INTO messages (user_id, direction, channel, kind, body, original_text, chosen_language, urgent, topic, danger, coded_terms, detected_language, stt_confidence, language_mismatch, voice_unclear)
-     VALUES ($1,'in',$2,$3,$4,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
-    [user.id, channel, kind, body || "[empty]", user.language ?? null, Boolean(a && a.danger !== "none"), a?.topic ?? null, a?.danger ?? null, a?.codedTerms ?? [], voice?.detected ?? null, voice?.confidence ?? null, voice?.mismatch ?? false, voice?.unclear ?? false],
+    `INSERT INTO messages (user_id, direction, channel, kind, body, original_text, chosen_language, urgent, urgent_reason, topic, danger, coded_terms,
+                           detected_language, stt_confidence, language_mismatch, voice_unclear, english_text, english_source, translation_failed, audio_ref)
+     VALUES ($1,'in',$2,$3,$4,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)`,
+    [
+      user.id, channel, kind, body || "[empty]", user.language ?? null, urgent, reason, a?.topic ?? null, a?.danger ?? null, a?.codedTerms ?? [],
+      voice?.detected ?? null, voice?.confidence ?? null, voice?.mismatch ?? false, voice?.unclear ?? false,
+      english?.ok ? english.text : null, english?.ok ? (english.provider === "none" ? "none" : "machine") : null, english ? !english.ok : false, audioRef,
+    ],
   );
 }
 
@@ -220,7 +268,7 @@ async function flagUnclearVoice(db: Db, user: UserRow, partial: string) {
   await openCase(db, user, "voice_unclear", false, partial ? `Heard (unsure): ${partial}` : "Voice note could not be transcribed");
 }
 
-async function answerQuestion(db: Db, user: UserRow, a: Analysis, question: string) {
+async function answerQuestion(db: Db, user: UserRow, a: Analysis, _question: string) {
   const lang = user.language ?? "en";
   const hits = search(a.text, { topic: a.topic ?? undefined, lang });
   if (hits.length === 0 || hits[0].score < 1) {
@@ -230,14 +278,8 @@ async function answerQuestion(db: Db, user: UserRow, a: Analysis, question: stri
   const best = hits[0].item;
   // The approved version in her language if one is published, else the English one (with a note).
   const { item, translated } = localize(best, lang);
-  // The AI may only rephrase approved text, in that text's own language: it never translates health content.
-  const sameLang = hits.map((h) => h.item).filter((i) => i.language === item.language);
-  const answer = await groundedAnswer(question, [item, ...sameLang.filter((i) => i.id !== item.id)]);
-  if (!answer.covered) {
-    await setState(db, user, { step: "after_answer", lastServices: [], lastTopic: a.topic });
-    return say(db, user, "dont_know");
-  }
-  let body = answer.text;
+  // The approved text itself, word for word: no machine ever writes or rephrases health advice.
+  let body = item.body;
   if (!translated) body = `${body}\n${t(lang, "translation_pending")}`;
   // Citation: which approved topic this answer came from.
   body = `${body}\n${t(lang, "answer_source", { title: item.title })}`;
@@ -304,6 +346,7 @@ async function suggestNearest(db: Db, user: UserRow, where: { lat: number; lng: 
 }
 
 async function requestDada(db: Db, user: UserRow, text: string) {
+  await shareOnRequest(db, user.id);
   await openCase(db, user, "asked_for_person", false, text);
   await setState(db, user, { step: "free" });
   return say(db, user, "dada_requested");
@@ -318,21 +361,21 @@ const DRAFTS: Record<string, string> = {
 
 export async function openCase(db: Db, user: UserRow, reason: string, urgent: boolean, summary: string) {
   const level = levelFor(reason);
-  const [c] = await db.query(`INSERT INTO cases (user_id, reason, urgent, summary, draft_reply, level, site_id) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id`, [
-    user.id,
-    reason,
-    urgent,
-    summary.slice(0, 500),
-    DRAFTS[reason] ?? "",
-    level,
-    (user as any).site_id ?? null,
-  ]);
-  await caseEvent(db, c.id, null, "opened", { reason, urgent, level });
+  // Her own health worker gets her case; nurses still see every nurse-level case.
+  const worker = await assignedWorkerId(db, user.id);
+  const [c] = await db.query(
+    `INSERT INTO cases (user_id, reason, urgent, summary, draft_reply, level, site_id, assigned_to, assigned_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8, CASE WHEN $8::int IS NULL THEN NULL ELSE now() END) RETURNING id`,
+    [user.id, reason, urgent, summary.slice(0, 500), DRAFTS[reason] ?? "", level, (user as any).site_id ?? null, worker],
+  );
+  await caseEvent(db, c.id, null, "opened", { reason, urgent, level, ...(worker ? { assignedTo: worker } : {}) });
   caseBus.emit("case", { id: c.id, urgent, level, kind: "opened" } satisfies CaseSignal);
   if (urgent) {
     const alert = `UBAH URGENT case #${c.id} (${reason.replace("danger_", "")}), girl ${user.anon_id}. Open: ${config.baseUrl}/staff/cases/${c.id}`;
     // Failed alerts are retried by the job queue; the case is also at the top of every inbox.
-    for (const phone of config.nurseAlertNumbers) await alertStaff(db, phone, alert);
+    // Her own worker AND every nurse: a danger sign never waits for one person who may be offline.
+    const [own] = worker ? await db.query<{ phone: string | null }>(`SELECT phone FROM staff WHERE id = $1 AND active`, [worker]) : [];
+    const phones = [...new Set([...(own?.phone ? [own.phone] : []), ...config.nurseAlertNumbers])];
+    for (const phone of phones) await alertStaff(db, phone, alert);
     if (config.nurseAlertNumbers.length === 0) log.warn({ caseId: c.id }, "urgent case opened but NURSE_ALERT_NUMBERS is empty (allowed only outside production)");
   }
   return c.id as number;
