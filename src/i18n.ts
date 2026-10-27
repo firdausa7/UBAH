@@ -7,13 +7,18 @@ import { ALL_LANGUAGES, girlLanguages } from "./languages/index.js";
 
 // Display names of the languages girls can choose (from src/languages/; disabled ones are left out).
 export const LANGUAGES: Record<string, string> = Object.fromEntries(girlLanguages().map((l) => [l.code, l.name]));
-export const LANGUAGE_MENU: Array<[string, string]> = [["1", "so"], ["2", "sw"], ["3", "en"], ["4", "om"]];
+// The numbered language menu on SMS, WhatsApp and USSD, from src/languages/: a disabled language is
+// left out and the others renumbered. Shown wherever a string says {languages}.
+export function languageMenu(): Array<[string, string]> {
+  return girlLanguages().map((l, i) => [String(i + 1), l.code]);
+}
+export const languageMenuText = () => girlLanguages().map((l, i) => `${i + 1} ${l.name}`).join("\n");
 
 type Strings = Record<string, string>;
 
 export const en: Strings = {
   welcome:
-    "Welcome to Ubah, a private place to ask about your body and health. Your name is not saved.\nChoose a language:\n1 Soomaali\n2 Kiswahili\n3 English\n4 Afaan Oromoo",
+    "Welcome to Ubah, a private place to ask about your body and health. Your name is not saved.\nChoose a language:\n{languages}",
   language_set: "Thank you. Ask me anything about your body, periods, pregnancy, family planning or safety. You can type or send a voice note.",
   translation_pending: "(Sorry, this answer is not yet available in your language, so it is in English.)",
   answer_menu: "Reply:\n1 Find a clinic\n2 Talk to a Dada\n3 Ask another question",
@@ -43,7 +48,7 @@ export const en: Strings = {
   help: "Ubah commands:\nMENU - start again\nDADA - talk to a person\nSTOP - no more messages\nDELETE - delete your chats",
   invalid_choice: "Sorry, I didn't understand. {prompt}",
   ussd_info: "Ubah: to ask a private health question, send HI by SMS or WhatsApp to this number.",
-  ussd_language: "Ubah\n1 Soomaali\n2 Kiswahili\n3 English\n4 Afaan Oromoo",
+  ussd_language: "Ubah\n{languages}",
   ussd_main: "Ubah: private health help\n1 Health topics\n2 Find a clinic\n3 My passes\n4 Talk to a Dada\n5 Urgent help now\n6 Language",
   ussd_topics: "Choose a topic:",
   ussd_no_topics: "No topics here yet. Send HI by SMS to ask a question.",
@@ -301,7 +306,8 @@ export function setTranslations(byLang: Record<string, Strings>) {
 
 export function t(lang: string | null | undefined, key: string, vars: Record<string, string | number> = {}): string {
   const s = translations[lang ?? "en"]?.[key] ?? en[key] ?? key;
-  return s.replace(/\{(\w+)\}/g, (_, k) => String(vars[k] ?? ""));
+  const all: Record<string, string | number> = { languages: languageMenuText(), ...vars };
+  return s.replace(/\{(\w+)\}/g, (_, k) => String(all[k] ?? ""));
 }
 
 // The text with its {placeholders} left in (for the app, which fills them in itself).

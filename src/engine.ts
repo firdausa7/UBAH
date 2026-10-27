@@ -1,7 +1,7 @@
 import type { Db } from "./db.js";
 import { config } from "./config.js";
 import { encryptPhone, hashPhone, newAnonId } from "./privacy.js";
-import { t, LANGUAGE_MENU, hasTranslation } from "./i18n.js";
+import { t, languageMenu, hasTranslation } from "./i18n.js";
 import { analyse, analyseBoth, type Analysis } from "./ml/models.js";
 import { expandCodedTerms } from "./ml/glossary.js";
 import { search, localize } from "./content/content.js";
@@ -180,7 +180,7 @@ export async function handleIncoming(db: Db, msg: Incoming): Promise<void> {
   // Check-in replies are numbers only: don't run them through the classifiers.
   if (state.step === "language") {
     await logIn(db, user, msg.channel, kind, text, null, meta);
-    const lang = LANGUAGE_MENU.find(([n, code]) => n === text || code === text.toLowerCase())?.[1];
+    const lang = languageMenu().find(([n, code]) => n === text || code === text.toLowerCase())?.[1];
     if (!lang) return say(db, user, "welcome");
     user.language = lang;
     await db.query(`UPDATE users SET language = $2 WHERE id = $1`, [user.id, lang]);

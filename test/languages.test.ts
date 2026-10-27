@@ -141,3 +141,26 @@ describe("danger-word lists", () => {
     }
   });
 });
+
+describe("the numbered language menu on SMS, WhatsApp and USSD", () => {
+  it("follows the configs: a disabled language disappears and the rest are renumbered", async () => {
+    const { freshDb, girl } = await import("./helpers.js");
+    const { languageMenuText, t } = await import("../src/i18n.js");
+    expect(languageMenuText()).toBe("1 Soomaali\n2 Kiswahili\n3 English\n4 Afaan Oromoo");
+    const db = await freshDb();
+    const sw = languageConfig("sw")!;
+    try {
+      sw.status = "disabled";
+      expect(t("en", "ussd_language")).toBe("Ubah\n1 Soomaali\n2 English\n3 Afaan Oromoo");
+      const g = girl(db, "0712777001");
+      const welcome = await g.send("hi");
+      expect(welcome).toContain("1 Soomaali\n2 English\n3 Afaan Oromoo");
+      expect(welcome).not.toContain("Kiswahili");
+      await g.send("2");
+      const [u] = await db.query(`SELECT language FROM users ORDER BY id DESC LIMIT 1`);
+      expect(u.language).toBe("en"); // "2" now means English
+    } finally {
+      sw.status = "enabled";
+    }
+  });
+});

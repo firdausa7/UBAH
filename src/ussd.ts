@@ -1,7 +1,7 @@
 import type { Db } from "./db.js";
 import { shareOnRequest } from "./auth/access.js";
 import { config } from "./config.js";
-import { t, LANGUAGE_MENU } from "./i18n.js";
+import { t, languageMenu } from "./i18n.js";
 import { getOrCreateUser, openCase, say } from "./engine.js";
 import { issuePass, SERVICE_MENU } from "./referrals.js";
 import { sendToUser } from "./channels/outbound.js";
@@ -36,7 +36,7 @@ export async function handleUssd(db: Db, phone: string, text: string): Promise<s
   // First, a language (once).
   if (!user.language) {
     if (!parts.length) return con(t("en", "ussd_language"));
-    const lang = LANGUAGE_MENU.find(([n]) => n === parts[0])?.[1];
+    const lang = languageMenu().find(([n]) => n === parts[0])?.[1];
     if (!lang) return end(t("en", "ussd_invalid"));
     user.language = lang;
     await db.query(`UPDATE users SET language = $2, state = $3 WHERE id = $1`, [user.id, lang, JSON.stringify({ step: "free" })]);
@@ -127,7 +127,7 @@ export async function handleUssd(db: Db, phone: string, text: string): Promise<s
   // 6 Language
   if (choice === "6") {
     if (!rest.length) return con(t(lang, "ussd_language"));
-    const next = LANGUAGE_MENU.find(([n]) => n === rest[0])?.[1];
+    const next = languageMenu().find(([n]) => n === rest[0])?.[1];
     if (!next) return end(t(lang, "ussd_invalid"));
     await db.query(`UPDATE users SET language = $2 WHERE id = $1`, [user.id, next]);
     return end(t(next, "ussd_lang_saved"));
