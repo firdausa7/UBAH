@@ -385,6 +385,7 @@ Tick each item with a name and a date. Documents marked DRAFT are in `docs/`.
 
 **Running it**
 - [ ] Deploy following `docs/deployment.md`; production refuses to start until every safety- and privacy-critical setting is in place.
+- [ ] Work through the **go-live checklist** at the end of `docs/deployment.md` (legal, languages, people, running it), including today's language work: translations, danger lists checked by native speakers, an evaluation report per language with no urgent message missed, assignments, and urgent alerts in `/worker`.
 - [ ] Nightly encrypted backups running, and **one restore drill done** and recorded.
 - [ ] Monitoring on `/health`, `/health/ops` (urgent case unanswered, failing nurse alerts, stopped worker) and backups, alerting the on-call lead.
 - [ ] Load test the staging server (`npm run loadtest`) at several times the expected peak.

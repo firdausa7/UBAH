@@ -1,6 +1,6 @@
 # Deploying Ubah
 
-Two ways to run a pilot. Both use the same Docker image and the same settings (`.env.example`).
+Two ways to run a pilot. Both use the same Docker image and the same settings (`.env.example`). The image contains everything at one address: the landing page, the girls' space (`/me`), the health-worker dashboard (`/worker`), admin (`/admin`), the staff pages (`/staff`) and the channels' webhooks. Start with the [go-live checklist](#go-live-checklist) at the end: it lists what must be true before the first real girl.
 
 | | Option A: one server | Option B: AWS managed |
 |---|---|---|
@@ -35,6 +35,9 @@ cp .env.example .env && chmod 600 .env
 #   NODE_ENV=production, BASE_URL=https://ubah.example.org, TRUST_PROXY=1
 #   POSTGRES_PASSWORD, HASH_SECRET, ENCRYPTION_KEY, SESSION_SECRET, OPS_KEY
 #   ALLOW_DRAFT_CONTENT=false, SEED_DEMO=false, NURSE_ALERT_NUMBERS, AT_USERNAME, AT_API_KEY, SMS_WEBHOOK_KEY
+#   GOOGLE_TRANSLATE_API_KEY (required: workers read girls' messages in English)
+#   STT_API_KEY (speech-to-text), and per language STT_<LANG>_* if a language uses MMS or Google (see below)
+#   VOICE_REPLIES stays false until a language has an approved voice
 docker compose up -d --build
 docker compose exec app node --import tsx src/createAdmin.ts --login <login> --name "<full name>"
 docker compose exec app node --import tsx src/importContent.ts   # starter content as DRAFTS
@@ -104,6 +107,16 @@ docker compose logs --tail=50 app
 ```
 Take a backup first (`/opt/ubah/backup.sh`). The app refuses to start if a migration file was edited after it ran, so a bad update can't silently change the database.
 
+### 7. Speech-to-text servers (only if a language uses them)
+
+Which provider each language uses comes from your evaluation (`npm run eval:languages`, see `eval/README.md`), not from this guide.
+
+- **OpenAI** (default for Somali, Kiswahili, English): only `STT_API_KEY`. The audio leaves Kenya: record it in the DPIA.
+- **Meta MMS** (Afaan Oromoo): run `tools/mms-server/` on a **separate** machine with a GPU, reachable only from the Ubah server (firewall: allow port 8090 from the Ubah server's address only), with `MMS_API_KEY` set. Then in Ubah's `.env`: `STT_OM_PROVIDER=mms`, `STT_OM_BASE_URL=http://<mms-host>:8090`, `STT_OM_API_KEY=<the same key>`, `STT_OM_LANGUAGE=<the Oromo variety you chose>`. The MMS weights are non-commercial (CC-BY-NC): your legal adviser must approve their use first. Hosting it in Kenya keeps Oromo voices in the country.
+- **Google Chirp** (if it measured best, e.g. for Kiswahili): a service account with the *Cloud Speech Client* role; put its JSON key on the server (`chmod 600`) and set `STT_GOOGLE_CREDENTIALS=/path/key.json`, `STT_GOOGLE_LOCATION`, and `STT_<LANG>_PROVIDER=google`. With Docker, mount the key file into the container or use `STT_GOOGLE_CREDENTIALS_JSON`.
+
+Ubah refuses to start in production if a language is set to MMS or Google without its server or key.
+
 ---
 
 ## Option B: AWS
@@ -143,6 +156,39 @@ npm run loadtest -- --url https://staging.example.org --rate 50 --duration 60 --
 ```
 
 It fails if more than 1% of requests fail or the 95th percentile is above one second.
+
+## Go-live checklist
+
+Tick every line before the first real girl. Keep the ticked copy, with names and dates, in your operations log.
+
+**Legal and safeguarding**
+- [ ] DPIA complete (`docs/dpia-template.md`), including every processor: hosting, Google (translation), OpenAI (speech), Meta MMS host if used, WhatsApp (Meta), Africa's Talking; where each stores data
+- [ ] Data processing agreements signed with those processors
+- [ ] Legal adviser approved: hosting location, the MMS licence (if used), the privacy notice
+- [ ] Ethics approval; the age decision recorded (testing with 18+ only unless approved otherwise)
+- [ ] Safeguarding procedure agreed with the protection partner (`docs/safeguarding-procedure.md`); referral contacts verified in `/staff`
+
+**Content and languages**
+- [ ] Health content approved and published by a named health-partner reviewer, in every language you open
+- [ ] Every message girls see translated and published per language: run `npm run translations -- export <lang>`, have a native speaker check it, import it, then a reviewer publishes in the Translation studio (includes the `web_…`, `share_…` and `voice_…` messages)
+- [ ] The girls' privacy notice translated and published
+- [ ] Danger-word lists (`data/danger/`) checked and extended by nurses and native speakers, per language
+- [ ] `npm run eval:languages` per language: **no urgent message missed**; each language set to `enabled` or `beta` in `src/languages/<lang>.ts` from its report, and a disabled language never shown
+- [ ] Answer templates for common replies translated and checked (they replace machine translation)
+
+**People and access**
+- [ ] Staff accounts created (one per person, never shared), each with two-step login set up; test logins and demo data removed
+- [ ] `NURSE_ALERT_NUMBERS` lists the nurses on call; each health worker's phone set in Admin, so urgent alerts reach their own worker too
+- [ ] Girls assigned to health workers in `/admin`; who covers nights and weekends is agreed
+- [ ] Health workers trained: the `/worker` inbox, "machine translated: check the meaning", urgent alerts switched on in their browser, Quick exit
+
+**Running it**
+- [ ] Production settings: Ubah starts (it refuses to start while any required setting is missing or unsafe)
+- [ ] WhatsApp and SMS numbers live; one real test message each way per language, including a voice note
+- [ ] Monitoring alerts reach the on-call lead (urgent case unanswered 15 minutes, nurse alerts failing, backups)
+- [ ] A backup restored on a spare machine (drill recorded)
+- [ ] Load test passed against staging
+- [ ] An urgent test message ("I want to kill myself", in each language) reached a nurse by SMS and appeared at the top of `/worker`, and the girl got the help message at once
 
 ## Incidents
 
