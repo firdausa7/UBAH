@@ -1,4 +1,5 @@
 import { Router, type Request, type Response } from "express";
+import { chooseTranslation, type ReplySource } from "../replies.js";
 import type { Db } from "../db.js";
 import { config } from "../config.js";
 import { auditReq } from "../audit.js";
@@ -211,6 +212,7 @@ ${contacts.length ? `<h3>Referral contacts</h3><ul class="timeline">${contacts.m
 <div class="card"><h2>Conversation</h2>${thread}</div>
 ${open ? `<div class="card"><h2>Reply</h2><form method="post" action="/staff/cases/${c.id}/reply">${csrfField(req)}
 <label for="body">Message to girl ${esc(c.anon_id)} (AI draft — check before sending)</label><textarea id="body" name="body" rows="4" required maxlength="1600">${esc(c.draft_reply)}</textarea>
+${c.language && c.language !== "en" ? `<label class="inline"><input type="checkbox" name="translate" value="1"> I wrote in English: translate it into ${esc(workerLabel(c.language))} for her (you'll see it before it is sent)</label>` : ""}
 <label class="inline"><input type="checkbox" name="handled" value="1"> Mark as handled after sending</label>
 <p><button class="accent">Send to girl ${esc(c.anon_id)}</button></p></form></div>` : ""}
 ${protection}
@@ -228,8 +230,19 @@ ${protection}
     const s = staffOf(req);
     const [user] = await db.query<UserRow>(`SELECT * FROM users WHERE id = $1`, [c.user_id]);
     const body = String(req.body.body ?? "").trim().slice(0, 1600);
+    // Written in English for a girl who reads another language: show what she will receive first,
+    // and send only after the worker confirms it (the same template-or-machine choice as /worker).
+    let outgoing = body;
+    let english: { text: string; source: ReplySource } | null = null;
+    if (user && body && req.body.translate && user.language && user.language !== "en") {
+      if (!req.body.confirm) return res.send(await translationPreview(req, c, user, body));
+      const source = String(req.body.source ?? "");
+      outgoing = String(req.body.translated ?? "").trim().slice(0, 2000);
+      if (!outgoing || !["template", "machine"].includes(source)) return res.redirect(`/staff/cases/${c.id}`);
+      english = { text: body, source: source as ReplySource };
+    }
     if (user && body) {
-      const messageId = await sendToUser(db, user, body, null, s.id);
+      const messageId = await sendToUser(db, user, outgoing, null, s.id, english ? { englishText: english.text, englishSource: english.source } : {});
       await auditReq(db, req, { action: "case.reply", targetType: "case", targetId: c.id, details: { messageId } });
       await caseEvent(db, c.id, s.id, "reply", { messageId });
       await db.query(
@@ -240,6 +253,26 @@ ${protection}
     if (req.body.handled) return markHandled(req, res, c);
     res.redirect(`/staff/cases/${c.id}?done=sent`);
   });
+
+  async function translationPreview(req: Request, c: any, user: UserRow, body: string): Promise<string> {
+    const t = await chooseTranslation(db, user.language!, body);
+    const back = `<p><a href="/staff/cases/${c.id}">← Back to the case (nothing was sent)</a></p>`;
+    if (!t.ok) {
+      return page("Not translated", `<div class="card"><h1><em>Not</em> translated</h1><p>The translation service didn't answer, so nothing was sent. Please try again in a moment, or write the reply in ${esc(workerLabel(user.language))}.</p>${back}</div>`, nav(req));
+    }
+    const hidden = (name: string, value: string) => `<input type="hidden" name="${name}" value="${esc(value)}">`;
+    return page(
+      "Check the translation",
+      `<div class="card"><div class="eyebrow">Girl ${esc(c.anon_id)} · ${esc(workerLabel(user.language))}</div><h1>Check <em>before sending</em></h1>
+<p class="muted">You wrote</p><div class="bubble out" style="max-width:100%">${esc(body)}</div>
+<p class="muted">She will receive</p><div class="bubble in" style="max-width:100%" lang="${esc(user.language)}">${esc(t.text)}</div>
+<p>${t.source === "template" ? `<span class="tag ok">Checked translation (answer template)</span>` : `<span class="tag urgent">Machine translated: check the meaning</span> If you can, ask a colleague who reads ${esc(workerLabel(user.language))}.`}</p>
+<p class="muted">She can also tap to see your English.</p>
+<form method="post" action="/staff/cases/${c.id}/reply">${csrfField(req)}${hidden("body", body)}${hidden("translate", "1")}${hidden("confirm", "1")}${hidden("translated", t.text)}${hidden("source", t.source)}${req.body.handled ? hidden("handled", "1") : ""}
+<p><button class="accent">Send this to girl ${esc(c.anon_id)}</button></p></form>${back}</div>`,
+      nav(req),
+    );
+  }
 
   async function markHandled(req: Request, res: Response, c: any) {
     const s = staffOf(req);

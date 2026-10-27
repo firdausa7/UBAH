@@ -172,6 +172,8 @@ Every channel (web `/me`, WhatsApp, SMS) goes through the same pipeline, `handle
 6. **The worker replies in English.** If it matches an answer template a native speaker has checked, she gets that reviewed translation; otherwise it is machine-translated (`translation_source = machine`). English needs neither. If translation fails, nothing is sent and the worker is told. The reply goes back on the channel her message came in on; in the app she sees it in her language, with the English on tap.
 7. **Resolved**: the message is done, and her recording is deleted at once.
 
+The `/staff` case page can do the same: tick "I wrote in English: translate it for her", and a preview shows exactly what she will receive (checked template or machine translation) before anything is sent. Unticked, the reply is sent exactly as written, for Dadas who write in her language.
+
 Ubah's automatic answers (from approved content) are sent **word for word**: no AI writes or rephrases health advice. Everything else a girl receives was written by a person.
 
 ## One login, three areas (`/login`, `/me`, `/worker`, `/admin`)

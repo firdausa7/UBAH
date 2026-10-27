@@ -77,6 +77,33 @@ describe("staff pages", () => {
     expect(view).toContain("20% sure");
   });
 
+  it("translates an English reply for a Somali girl only after the worker has seen what she will receive", async () => {
+    const g = girl(db, "0712000210");
+    await g.send("hi");
+    await g.send("1"); // Soomaali
+    await g.send("DADA");
+    await g.replies();
+    const [c] = await db.query(`SELECT c.id FROM cases c JOIN users u ON u.id = c.user_id WHERE u.phone_hash = $1`, [hashPhone("0712000210")]);
+    const dada = await login("dada");
+    expect((await dada.get(`/staff/cases/${c.id}`)).text).toContain("translate it into Soomaali for her");
+
+    const preview = await dada.post(`/staff/cases/${c.id}/reply`, { body: "Hello, how can I help?", translate: "1" });
+    expect(preview.status).toBe(200);
+    expect(preview.text).toContain("[en→so] Hello, how can I help?");
+    expect(preview.text).toContain("Machine translated: check the meaning");
+    expect(await g.replies()).toEqual([]); // nothing sent yet
+
+    const sent = await dada.post(`/staff/cases/${c.id}/reply`, { body: "Hello, how can I help?", translate: "1", confirm: "1", translated: "[en→so] Hello, how can I help?", source: "machine" });
+    expect(sent.status).toBe(302);
+    expect(await g.replies()).toEqual(["[en→so] Hello, how can I help?"]);
+    const [m] = await db.query(`SELECT english_text, english_source FROM messages WHERE direction = 'out' ORDER BY id DESC LIMIT 1`);
+    expect(m).toEqual({ english_text: "Hello, how can I help?", english_source: "machine" });
+
+    // Unticked: sent exactly as written (a Dada writing in Somali).
+    await dada.post(`/staff/cases/${c.id}/reply`, { body: "Iska warran, sidee kuu caawin karaa?" });
+    expect(await g.replies()).toEqual(["Iska warran, sidee kuu caawin karaa?"]);
+  });
+
   it("lets a Dada answer an urgent case, and the girl receives it", async () => {
     const g = girl(db, "0712000201");
     await g.send("hi");
