@@ -3,6 +3,7 @@ import { Link, Route, Routes, useParams, useSearchParams } from 'react-router'
 import { api } from '../../lib/api.js'
 import { CHANNELS, StaffShell, when } from '../../ui/StaffShell.jsx'
 import MessageView from './MessageView.jsx'
+import { useUrgentAlerts } from './useUrgentAlerts.js'
 
 const POLL_MS = 15000
 const LANGS = [
@@ -53,6 +54,7 @@ function Desk() {
     setParams(next, { replace: true })
   }
   const urgent = items?.filter((m) => m.urgent && m.status !== 'resolved').length ?? 0
+  const alerts = useUrgentAlerts(load)
 
   return (
     <div className="mx-auto grid max-w-7xl gap-6 px-5 py-6 lg:grid-cols-[minmax(340px,420px)_1fr]">
@@ -63,6 +65,18 @@ function Desk() {
           </h1>
           {urgent > 0 && <span className="tag bg-urgent-bg text-urgent">{urgent} urgent</span>}
         </div>
+        <button
+          type="button"
+          onClick={alerts.toggle}
+          aria-pressed={alerts.enabled}
+          className={`mb-4 flex w-full items-center justify-between rounded-2xl px-4 py-2.5 text-left text-[15px] ${alerts.enabled ? 'bg-lavender text-plum' : 'bg-blush text-rose-ink'}`}
+        >
+          <span>
+            {alerts.enabled ? 'Urgent alerts are on: a sound' : 'Turn on urgent alerts: a sound'}
+            {alerts.permission === 'granted' ? ' and a notification' : alerts.permission === 'denied' ? ' (notifications are blocked in this browser)' : ' and a notification'}
+          </span>
+          <span className="font-medium">{alerts.enabled ? 'Turn off' : 'Turn on'}</span>
+        </button>
         <div className="mb-4 flex flex-wrap gap-2">
           <select aria-label="Language" className="field w-auto py-2 text-[15px]" value={filters.language} onChange={(e) => set('language', e.target.value)}>
             <option value="">All languages</option>
