@@ -93,6 +93,7 @@ export async function housekeeping(db: Db): Promise<void> {
   await db.query(`DELETE FROM jobs WHERE status = 'done' AND finished_at < now() - interval '30 days'`);
   await db.query(`DELETE FROM girl_sessions WHERE revoked_at IS NOT NULL OR expires_at < now()`);
   await db.query(`DELETE FROM girl_otp WHERE created_at < now() - interval '1 day'`);
+  await db.query(`DELETE FROM pin_attempts WHERE updated_at < now() - interval '1 day'`);
   // Girls' voice notes: 30 days at most, gone as soon as the message is resolved.
   await purgeVoiceNotes(db);
 }

@@ -82,6 +82,10 @@ export async function readGirlSession(db: Db, req: Request): Promise<GirlSession
   return { user: row, locked, tokenHash };
 }
 
+export async function lockGirlSession(db: Db, tokenHash: string) {
+  await db.query(`UPDATE girl_sessions SET unlocked_until = NULL WHERE token_hash = $1`, [tokenHash]);
+}
+
 export async function unlockGirlSession(db: Db, tokenHash: string) {
   await db.query(`UPDATE girl_sessions SET unlocked_until = now() + make_interval(mins => $2) WHERE token_hash = $1`, [tokenHash, GIRL_LOCK_MINUTES]);
 }

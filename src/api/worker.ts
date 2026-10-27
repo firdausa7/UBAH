@@ -157,7 +157,7 @@ export function workerApi(db: Db): Router {
     const c = await consents(db, girlId);
     // The last 50, oldest first: enough context for a reply.
     const rows = (await db.query(`SELECT ${MESSAGE_COLUMNS} FROM messages m WHERE m.user_id = $1 AND ($2 OR m.urgent) AND m.kind <> 'location' ORDER BY m.id DESC LIMIT 50`, [girlId, c.messages])).reverse();
-    await logAccess(db, req, girlId, "messages");
+    await logAccess(db, req, girlId, "conversation");
     res.json({ consents: c, messages: rows.map((m) => toWorkerMessage(m, w.id, c.voice)) });
   });
 

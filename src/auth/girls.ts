@@ -63,11 +63,12 @@ export async function verifyCodeAndSetPin(db: Db, phone: string, code: string, p
   if (problem) return problem;
   const hash = hashPhone(phone);
   if (!(await checkCode(db, hash, code))) return "bad_code";
+  await db.query(`DELETE FROM pin_attempts WHERE phone_hash = $1`, [hash]); // a new SMS code unlocks
   const lang = language ? resolveLanguage(language) : null;
   const [existing] = await db.query<UserRow>(`SELECT * FROM users WHERE phone_hash = $1`, [hash]);
   if (existing) {
     const [u] = await db.query<UserRow>(
-      `UPDATE users SET pin_hash = $2, pin_failures = 0, pin_locked_until = NULL, phone_verified_at = now(), language = COALESCE($3, language), last_seen_at = now()
+      `UPDATE users SET pin_hash = $2, phone_verified_at = now(), language = COALESCE($3, language), last_seen_at = now()
         WHERE id = $1 RETURNING *`,
       [existing.id, hashPassword(pin), lang],
     );
@@ -82,29 +83,45 @@ export async function verifyCodeAndSetPin(db: Db, phone: string, code: string, p
   return u;
 }
 
-// Phone + PIN. The same answer for an unknown phone and a wrong PIN, and the same time taken.
+// Phone + PIN. An unknown phone and a wrong PIN get the same answer, take the same time, and lock
+// out the same way: wrong tries are counted per phone number, account or not, so nobody can find out
+// whether a number uses Ubah by guessing PINs.
 export async function checkPin(db: Db, phone: string, pin: string): Promise<UserRow | "wrong" | "locked"> {
-  const [u] = validPhone(phone) ? await db.query<UserRow & { pin_hash: string | null; pin_locked_until: string | null }>(`SELECT * FROM users WHERE phone_hash = $1`, [hashPhone(phone)]) : [];
-  return verifyGirlPin(db, u, pin);
-}
-
-// Her PIN, with the same count of wrong tries whether she is signing in or unlocking.
-export async function verifyGirlPin(db: Db, u: (UserRow & { pin_hash?: string | null; pin_locked_until?: string | null }) | undefined, pin: string): Promise<UserRow | "wrong" | "locked"> {
-  if (!u || !u.pin_hash) {
+  if (!validPhone(phone)) {
     verifyPassword(pin, DUMMY_PASSWORD_HASH);
     return "wrong";
   }
-  if (u.pin_locked_until && new Date(u.pin_locked_until) > new Date()) return "locked";
-  if (!verifyPassword(pin, u.pin_hash)) {
+  const hash = hashPhone(phone);
+  const [u] = await db.query<UserRow & { pin_hash: string | null }>(`SELECT * FROM users WHERE phone_hash = $1`, [hash]);
+  return verifyPinFor(db, hash, u, pin);
+}
+
+// Her PIN when her session locked itself: the same count of wrong tries as signing in.
+export async function verifyGirlPin(db: Db, u: (UserRow & { pin_hash?: string | null }) | undefined, pin: string): Promise<UserRow | "wrong" | "locked"> {
+  if (!u) {
+    verifyPassword(pin, DUMMY_PASSWORD_HASH);
+    return "wrong";
+  }
+  return verifyPinFor(db, u.phone_hash, u, pin);
+}
+
+async function verifyPinFor(db: Db, hash: string, u: (UserRow & { pin_hash?: string | null }) | undefined, pin: string): Promise<UserRow | "wrong" | "locked"> {
+  const [attempts] = await db.query<{ locked: boolean }>(`SELECT (locked_until IS NOT NULL AND locked_until > now()) AS locked FROM pin_attempts WHERE phone_hash = $1`, [hash]);
+  if (attempts?.locked) return "locked";
+  const ok = u?.pin_hash ? verifyPassword(pin, u.pin_hash) : (verifyPassword(pin, DUMMY_PASSWORD_HASH), false);
+  if (!ok || !u) {
     const [r] = await db.query<{ locked: boolean }>(
-      `UPDATE users SET
-          pin_locked_until = CASE WHEN pin_failures + 1 >= $2 THEN now() + make_interval(mins => $3) ELSE pin_locked_until END,
-          pin_failures = CASE WHEN pin_failures + 1 >= $2 THEN 0 ELSE pin_failures + 1 END
-        WHERE id = $1 RETURNING (pin_locked_until IS NOT NULL AND pin_locked_until > now()) AS locked`,
-      [u.id, PIN_MAX_FAILURES, PIN_LOCK_MINUTES],
+      `INSERT INTO pin_attempts (phone_hash, failures) VALUES ($1, 1)
+       ON CONFLICT (phone_hash) DO UPDATE SET
+         locked_until = CASE WHEN pin_attempts.failures + 1 >= $2 THEN now() + make_interval(mins => $3) ELSE pin_attempts.locked_until END,
+         failures = CASE WHEN pin_attempts.failures + 1 >= $2 THEN 0 ELSE pin_attempts.failures + 1 END,
+         updated_at = now()
+       RETURNING (locked_until IS NOT NULL AND locked_until > now()) AS locked`,
+      [hash, PIN_MAX_FAILURES, PIN_LOCK_MINUTES],
     );
     return r?.locked ? "locked" : "wrong";
   }
-  await db.query(`UPDATE users SET pin_failures = 0, last_seen_at = now() WHERE id = $1`, [u.id]);
+  await db.query(`DELETE FROM pin_attempts WHERE phone_hash = $1`, [hash]);
+  await db.query(`UPDATE users SET last_seen_at = now() WHERE id = $1`, [u.id]);
   return u;
 }

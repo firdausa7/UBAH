@@ -75,8 +75,9 @@ export async function replyToMessage(db: Db, workerId: number, messageId: number
     voiceRef = v.id;
   }
 
-  // Back over the channel her message came in on.
-  const channel = m.channel === "simulator" ? user.channel : m.channel;
+  // Back over the channel her message came in on. USSD can't carry a reply later (the session is
+  // over), so a reply to a USSD message goes by SMS, like every other USSD answer.
+  const channel = m.channel === "ussd" ? "sms" : m.channel === "simulator" ? user.channel : m.channel;
   const sentMessageId = await sendToUser(db, { ...user, channel }, t.text, null, workerId, { englishText: english, englishSource: t.source, audioMediaId: voiceRef });
   const [r] = await db.query<{ id: number }>(
     `INSERT INTO replies (message_id, worker_id, english_text, translated_text, translation_source, voice_ref, sent_message_id) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id`,

@@ -38,7 +38,9 @@ export default function Chat() {
       try {
         merge((await api.post(`/me/messages?after=${lastRef.current}`, { text: left[0] })).messages)
       } catch (e) {
-        if (!(e instanceof ApiError)) break // still offline: try again later
+        // Still offline, locked (PIN needed), too many at once or a server problem: keep it and try
+        // again later. Only a message the server refuses for good (400) is dropped.
+        if (!(e instanceof ApiError) || e.status !== 400) break
       }
       left = left.slice(1)
       setQueue(left)

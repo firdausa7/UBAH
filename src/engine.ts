@@ -301,17 +301,26 @@ async function logIn(db: Db, user: UserRow, channel: string, kind: string, body:
 
 // One open "audio unclear" case per girl at a time: repeated tries add to it, they don't flood the inbox.
 async function flagUnclearVoice(db: Db, user: UserRow, partial: string) {
+  // Only if she shares her messages: an unclear note isn't a danger sign, so her choice holds.
+  // (She is asked to try again or type either way, and a danger word in it is urgent regardless.)
+  if (!(await consents(db, user.id)).messages) return;
   const [open] = await db.query(`SELECT id FROM cases WHERE user_id = $1 AND status = 'open' LIMIT 1`, [user.id]);
   if (open) return;
   await openCase(db, user, "voice_unclear", false, partial ? `Heard (unsure): ${partial}` : "Voice note could not be transcribed");
 }
+
+const MIN_ANSWER_SCORE = 2;
 
 async function answerQuestion(db: Db, user: UserRow, a: Analysis, _question: string, english: string | null) {
   const lang = user.language ?? "en";
   // The topic models are trained on English: for her words in another language, read the translation.
   const topic = lang !== "en" && english ? (analyse(english, "en").topic ?? a.topic) : a.topic;
   const hits = search(a.text, { topic: topic ?? undefined, lang, english: english ? expandCodedTerms(english).text : null });
-  if (hits.length === 0 || hits[0].score < 1) {
+  // A weak match is "I'm not sure, talk to a Dada", never a guess. On the 84 labelled questions in
+  // data/seed/topic.jsonl (with the topic boost; optimistic, as the topic model learnt from them):
+  // at 1, 6 answers come from the wrong topic; at 2, 5, with no right answer lost. Danger signs
+  // never get here: they are urgent first. A person is safe; a wrong health answer is not.
+  if (hits.length === 0 || hits[0].score < MIN_ANSWER_SCORE) {
     await setState(db, user, { step: "after_answer", lastServices: [], lastTopic: a.topic });
     return say(db, user, "dont_know");
   }

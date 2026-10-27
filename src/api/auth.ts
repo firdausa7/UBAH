@@ -4,7 +4,7 @@ import { audit } from "../audit.js";
 import { DUMMY_PASSWORD_HASH, verifyPassword } from "../privacy.js";
 import { createSession, endSession, mfaMethod, readSession, upgradeSession } from "../web/auth.js";
 import { checkSmsCode, checkTotp, isLocked, loadStaff, registerFailure, sendLoginCode, useRecoveryCode } from "../web/login.js";
-import { appRoleOf, createGirlSession, endGirlSession, HOME, readActor, readGirlSession, unlockGirlSession } from "../auth/roles.js";
+import { appRoleOf, createGirlSession, endGirlSession, HOME, lockGirlSession, readActor, readGirlSession, unlockGirlSession } from "../auth/roles.js";
 import { checkPin, sendGirlCode, verifyCodeAndSetPin, verifyGirlPin } from "../auth/girls.js";
 import { languageConfig } from "../languages/index.js";
 
@@ -61,6 +61,13 @@ export function authApi(db: Db, opts: { loginLimiter: RequestHandler }): Router 
       return res.status(423).json({ error: "locked" });
     }
     await unlockGirlSession(db, g.tokenHash);
+    res.json({ ok: true });
+  });
+
+  // Quick exit: lock her session at once, so the next person to open the phone needs her PIN.
+  r.post("/girl/lock", async (req, res) => {
+    const g = await readGirlSession(db, req);
+    if (g) await lockGirlSession(db, g.tokenHash);
     res.json({ ok: true });
   });
 

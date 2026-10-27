@@ -66,6 +66,7 @@ describe("staff pages", () => {
     const g = girl(db, "0712000209");
     await g.send("hi");
     await g.send("4"); // Afaan Oromoo (beta)
+    await g.send("1"); // she shares her messages with her health worker
     await g.voice("laguun koo ture", { mockLanguage: "so", mockConfidence: 0.2 });
     const [c] = await db.query(`SELECT id FROM cases WHERE reason = 'voice_unclear' ORDER BY id DESC LIMIT 1`);
     const dada = await login("dada");

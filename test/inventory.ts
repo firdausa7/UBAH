@@ -28,6 +28,7 @@ export const INVENTORY = [
   "POST /api/auth/girl/verify",
   "POST /api/auth/girl/pin",
   "POST /api/auth/girl/unlock",
+  "POST /api/auth/girl/lock",
   "POST /api/auth/staff",
   "POST /api/auth/staff/code",
   "POST /api/auth/staff/code/resend",

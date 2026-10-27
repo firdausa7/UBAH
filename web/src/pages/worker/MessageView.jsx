@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router'
 import { api } from '../../lib/api.js'
 import { CHANNELS, when } from '../../ui/StaffShell.jsx'
@@ -8,6 +8,7 @@ const LOW_CONFIDENCE = 0.6
 export default function MessageView({ id, back, onChange }) {
   const [data, setData] = useState(null)
   const [missing, setMissing] = useState(false)
+  const audioRetried = useRef(false) // a fresh link once per message, never a loop
   const load = useCallback(
     () =>
       api
@@ -58,7 +59,22 @@ export default function MessageView({ id, back, onChange }) {
       <div className="grid gap-4 md:grid-cols-2">
         <section className="rounded-[28px] bg-lavender p-6">
           <p className="eyebrow mb-2">What she said{m.chosenLanguageLabel ? ` · ${m.chosenLanguageLabel}` : ''}</p>
-          {m.audioUrl && <audio controls preload="none" src={m.audioUrl} className="mb-3 w-full" aria-label="Her voice note" />}
+          {/* The link works for 5 minutes: if it has expired, fetch a fresh one (the access log counts it as the same look). */}
+          {m.audioUrl && (
+            <audio
+              controls
+              preload="none"
+              src={m.audioUrl}
+              className="mb-3 w-full"
+              aria-label="Her voice note"
+              onError={() => {
+                if (!audioRetried.current) {
+                  audioRetried.current = true
+                  load()
+                }
+              }}
+            />
+          )}
           <p className="text-[18px] whitespace-pre-line text-plum">{m.text}</p>
         </section>
         <section className="rounded-[28px] bg-white p-6 ring-1 ring-hair">

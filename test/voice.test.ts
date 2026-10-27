@@ -77,10 +77,11 @@ describe("voice notes in the conversation", () => {
   beforeAll(async () => {
     db = await freshDb();
   });
-  async function somaliGirl(phone: string) {
+  async function somaliGirl(phone: string, shares = true) {
     const g = girl(db, phone);
     await g.send("hi");
     await g.send("1"); // Soomaali
+    await g.send(shares ? "1" : "2"); // what her health worker may see
     const [u] = await db.query(`SELECT id FROM users ORDER BY id DESC LIMIT 1`);
     const last = async () => (await db.query(`SELECT * FROM messages WHERE user_id = $1 AND direction = 'in' ORDER BY id DESC LIMIT 1`, [u.id]))[0];
     const cases = async () => db.query(`SELECT * FROM cases WHERE user_id = $1 ORDER BY id`, [u.id]);
@@ -111,6 +112,12 @@ describe("voice notes in the conversation", () => {
     const cs = await cases();
     expect(cs).toHaveLength(1);
     expect(cs[0]).toMatchObject({ reason: "voice_unclear", urgent: false, level: "dada" });
+  });
+
+  it("tells no one when she doesn't share her messages (she is still asked to try again)", async () => {
+    const { g, cases } = await somaliGirl("0712000307", false);
+    expect(await g.voice("something", { mockConfidence: 0.1 })).toMatch(/couldn't hear that voice note/);
+    expect(await cases()).toEqual([]);
   });
 
   it("tells a worker when the note is empty", async () => {

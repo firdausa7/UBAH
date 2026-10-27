@@ -114,7 +114,12 @@ export async function handleUssd(db: Db, phone: string, text: string): Promise<s
     if (!rest.length) return con(t(lang, "ussd_urgent_menu"));
     const u = URGENT[rest[0]];
     if (!u) return end(t(lang, "ussd_invalid"));
-    await db.query(`INSERT INTO messages (user_id, direction, channel, kind, body, danger) VALUES ($1,'in','ussd','text',$2,$3)`, [user.id, `[USSD urgent help: ${u.reason}]`, u.reason.replace("danger_", "")]);
+    // Urgent like any danger sign: her worker sees it whatever she shares, at the top of the inbox.
+    await db.query(`INSERT INTO messages (user_id, direction, channel, kind, body, danger, urgent, urgent_reason) VALUES ($1,'in','ussd','text',$2,$3,TRUE,'ussd:urgent help menu')`, [
+      user.id,
+      `[USSD urgent help: ${u.reason}]`,
+      u.reason.replace("danger_", ""),
+    ]);
     await openCase(db, user, u.reason, true, `USSD urgent help: ${u.reason.replace("danger_", "")}`);
     if (u.reason === "danger_medical") {
       const pass = await issuePass(db, user.id, u.services, true);

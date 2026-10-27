@@ -223,7 +223,7 @@ describe("assignments, consent and the access log", () => {
       expect.arrayContaining([
         { staff_login: "admin", what: "profile" },
         { staff_login: "nurse", what: "profile" },
-        { staff_login: "nurse", what: "messages" },
+        { staff_login: "nurse", what: "conversation" },
       ]),
     );
     expect(log.filter((l: any) => l.staff_login === "dada")).toEqual([]); // refused, so nothing seen
@@ -290,6 +290,46 @@ describe("voice notes: private, short-lived links", () => {
   });
 });
 
+describe("fixes from the code review", () => {
+  it("Quick exit locks her session at once: the next person needs her PIN", async () => {
+    const { a } = await webGirl("0712555060", "2580");
+    expect((await a.get("/api/me")).status).toBe(200);
+    expect((await post(a, "/api/auth/girl/lock")).status).toBe(200);
+    expect((await a.get("/api/me")).body).toEqual({ error: "pin_needed" });
+    expect((await post(a, "/api/auth/girl/lock")).status).toBe(200); // harmless twice
+    expect((await request(app).post("/api/auth/girl/lock").set(H)).status).toBe(200); // and with no session
+  });
+
+  it("wrong PINs lock an unknown number exactly like a registered one (no way to tell who uses Ubah)", async () => {
+    await webGirl("0712555061", "2580");
+    const tries = async (phone: string) => {
+      const out = [];
+      for (let i = 0; i < 6; i++) {
+        const r = await post(request.agent(app), "/api/auth/girl/pin", { phone, pin: "0000" });
+        out.push([r.status, r.body.error]);
+      }
+      return out;
+    };
+    const registered = await tries("0712555061");
+    const unknown = await tries("0712555997"); // a number no other test has tried
+    expect(unknown).toEqual(registered);
+    expect(registered.at(-1)).toEqual([423, "locked"]);
+  });
+
+  it("the inbox list and opening her whole conversation are logged as different looks", async () => {
+    const { a: girlAgent, user } = await webGirl("0712555062");
+    await girlAgent.put("/api/me/consents").set(H).send({ messages: true });
+    await db.query(`INSERT INTO messages (user_id, direction, channel, body) VALUES ($1,'in','web','a question about periods')`, [user.id]);
+    const admin = await staff("admin");
+    await admin.put(`/api/admin/girls/${user.id}/assignment`).set(H).send({ workerId: await staffId("nurse") });
+    const nurse = await staff("nurse");
+    await nurse.get("/api/worker/inbox");
+    await nurse.get(`/api/worker/girls/${user.id}/messages`);
+    const log = await db.query(`SELECT what FROM access_log WHERE girl_id = $1 AND staff_login = 'nurse' ORDER BY id`, [user.id]);
+    expect(log.map((l: any) => l.what)).toEqual(["messages", "conversation"]);
+  });
+});
+
 describe("the access log records looks, not screen refreshes", () => {
   it("logs one line per girl when the inbox refreshes, and a new line for a new look later", async () => {
     const { user } = await webGirl("0712555050");
@@ -316,9 +356,9 @@ describe("the access log records looks, not screen refreshes", () => {
     await nurse.get(`/api/worker/girls/${user.id}/messages`);
     for (const id of ids) await nurse.get(`/api/worker/messages/${id}`);
     await nurse.get(`/api/worker/messages/${ids[0]}`);
-    const log = await db.query(`SELECT what, target_id FROM access_log WHERE girl_id = $1 AND staff_login = 'nurse' AND what IN ('messages','message') ORDER BY id`, [user.id]);
+    const log = await db.query(`SELECT what, target_id FROM access_log WHERE girl_id = $1 AND staff_login = 'nurse' AND what IN ('conversation','message') ORDER BY id`, [user.id]);
     expect(log).toEqual([
-      { what: "messages", target_id: null },
+      { what: "conversation", target_id: null },
       { what: "message", target_id: String(ids[0]) },
       { what: "message", target_id: String(ids[1]) },
     ]);

@@ -330,6 +330,26 @@ describe("care, passes and lessons in her space", () => {
   });
 });
 
+describe("USSD (fixes from the code review)", () => {
+  it("an urgent-help choice on USSD is urgent for her worker, and a reply to it goes by SMS", async () => {
+    const ussd = (phone: string, text: string) => request(app).post("/webhooks/ussd").type("form").send({ sessionId: "s", serviceCode: "*384#", phoneNumber: phone, text });
+    const phone = "+254712600110";
+    await ussd(phone, "");
+    await ussd(phone, "3"); // English
+    await ussd(phone, "5*2"); // Urgent help: someone is hurting me
+    const [u] = await db.query(`SELECT id FROM users WHERE phone_hash = $1`, [hashPhone(phone)]);
+    const [m] = await db.query(`SELECT id, urgent FROM messages WHERE user_id = $1 AND channel = 'ussd' AND direction = 'in' ORDER BY id DESC LIMIT 1`, [u.id]);
+    expect(m.urgent).toBe(true);
+    await assign(u.id, "dada");
+    const dada = await staff("dada");
+    const inbox = (await dada.get("/api/worker/inbox")).body.messages;
+    expect(inbox.find((x: any) => x.id === m.id)).toMatchObject({ urgent: true }); // she shares nothing, urgent always reaches her worker
+    await dada.post(`/api/worker/messages/${m.id}/reply`).set(H).send({ english: "I'm here. Are you safe now?" });
+    const [o] = await db.query(`SELECT channel FROM outbox WHERE to_hash = $1 ORDER BY id DESC LIMIT 1`, [hashPhone(phone)]);
+    expect(o.channel).toBe("sms");
+  });
+});
+
 describe("wipe my history", () => {
   it("deletes her account and everything linked to it, and signs her out", async () => {
     const { a: her, user } = await webGirl("0712600090", "so", { messages: true, voice: true });
@@ -341,6 +361,12 @@ describe("wipe my history", () => {
     const count = async (sql: string) => (await db.query(sql, [user.id]))[0].n as number;
     expect(await count(`SELECT count(*)::int AS n FROM voice_notes WHERE user_id = $1`)).toBe(1);
 
+    // A spoken reply to her (voice replies on) is stored in media: it must go too.
+    const [mm] = await db.query(`SELECT id FROM messages WHERE user_id = $1 AND direction = 'in' LIMIT 1`, [user.id]);
+    const [media] = await db.query(`INSERT INTO media (mime, bytes, size, sha256, filename) VALUES ('audio/mpeg', '\\x00', 1, 'x', 'reply.mp3') RETURNING id`);
+    const [st] = await db.query(`SELECT id FROM staff WHERE login = 'nurse'`);
+    await db.query(`INSERT INTO replies (message_id, worker_id, english_text, translated_text, translation_source, voice_ref) VALUES ($1,$2,'Hi','Hi','none',$3)`, [mm.id, st.id, media.id]);
+
     expect((await her.delete("/api/me")).status).toBe(403); // the X-Ubah header is still required
     expect((await her.delete("/api/me").set(H)).status).toBe(204);
 
@@ -348,6 +374,7 @@ describe("wipe my history", () => {
       expect(await count(`SELECT count(*)::int AS n FROM ${table} = $1`), table).toBe(0);
     }
     expect((await db.query(`SELECT count(*)::int AS n FROM outbox WHERE to_hash = $1`, [hashPhone("0712600090")]))[0].n).toBe(0);
+    expect((await db.query(`SELECT 1 FROM media WHERE id = $1`, [media.id])).length).toBe(0);
     expect((await her.get("/api/me")).status).toBe(401);
     // The access log keeps only that someone looked, never what.
     const log = await db.query(`SELECT what, target_id FROM access_log WHERE girl_id = $1`, [user.id]);
@@ -399,6 +426,26 @@ describe("answers for a girl writing in Somali", () => {
     failNext = true;
     const res = await a.post("/api/me/messages").set(H).send({ text: "Caadadaydu way soo daahday" });
     expect(res.body.messages.at(-1).text).toMatch(/I'm not sure about that/);
+  });
+});
+
+describe("answers come from the right topic, or from a person", () => {
+  it("never answers with another topic's lesson, and offers a person when nothing matches well", async () => {
+    const g = girl(db, "0712600100");
+    await g.send("hi");
+    await g.send("3");
+    await g.send("2"); // keeps her messages private: not part of this test
+    // Search alone matched both to the infections lesson; with the topic Ubah recognises, each gets
+    // its own topic's lesson.
+    const period = await g.send("how long does a period last");
+    expect(period).not.toMatch(/HIV|infection/i);
+    expect(period).toMatch(/period/i);
+    const positive = await g.send("test was positive");
+    expect(positive).not.toMatch(/HIV|infection/i);
+    expect(positive).toMatch(/pregnan/i);
+    // A question that matches nothing well goes to a person.
+    expect(await g.send("what is the weather like in garissa")).toMatch(/I'm not sure about that/);
+    expect(await g.send("my period is two weeks late, what should i do")).not.toMatch(/I'm not sure/);
   });
 });
 
