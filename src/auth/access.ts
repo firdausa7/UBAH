@@ -39,9 +39,18 @@ export async function shareOnRequest(db: Db, girlId: number) {
   if (!any) await db.query(`INSERT INTO consents (user_id, scope, granted) VALUES ($1,'messages',TRUE)`, [girlId]);
 }
 
+// Her worker counts only while their account is active and they are still a nurse or Dada.
+export const ACTIVE_ASSIGNMENT = `a.ended_at IS NULL AND EXISTS (SELECT 1 FROM staff hw WHERE hw.id = a.health_worker_id AND hw.active AND hw.role IN ('nurse','dada'))`;
+
 export async function assignedWorkerId(db: Db, girlId: number): Promise<number | null> {
-  const [a] = await db.query<{ health_worker_id: number }>(`SELECT health_worker_id FROM assignments WHERE girl_id = $1 AND ended_at IS NULL`, [girlId]);
+  const [a] = await db.query<{ health_worker_id: number }>(`SELECT a.health_worker_id FROM assignments a WHERE a.girl_id = $1 AND ${ACTIVE_ASSIGNMENT}`, [girlId]);
   return a?.health_worker_id ?? null;
+}
+
+// A worker deactivated, or no longer a nurse or Dada: their girls go back to "not assigned", so an
+// admin sees them and reassigns them (and their messages never wait on someone who has left).
+export async function endAssignmentsOf(db: Db, staffId: number): Promise<number> {
+  return (await db.query(`UPDATE assignments SET ended_at = now() WHERE health_worker_id = $1 AND ended_at IS NULL RETURNING id`, [staffId])).length;
 }
 
 export async function isAssigned(db: Db, workerId: number, girlId: number): Promise<boolean> {

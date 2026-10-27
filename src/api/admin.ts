@@ -3,7 +3,7 @@ import type { Db } from "../db.js";
 import { auditReq } from "../audit.js";
 import { languageConfig, workerLabel } from "../languages/index.js";
 import { requireRole, workerOf } from "../auth/roles.js";
-import { logAccess } from "../auth/access.js";
+import { ACTIVE_ASSIGNMENT, logAccess } from "../auth/access.js";
 
 // /api/admin: list girls and health workers, and assign each girl to one worker.
 // Admins see who a girl is assigned to, never her messages.
@@ -16,7 +16,7 @@ export function adminApi(db: Db): Router {
     const rows = await db.query<any>(
       `SELECT u.id, u.anon_id, u.language, u.channel, u.created_at, s.id AS worker_id, s.name AS worker_name
          FROM users u
-         LEFT JOIN assignments a ON a.girl_id = u.id AND a.ended_at IS NULL
+         LEFT JOIN assignments a ON a.girl_id = u.id AND ${ACTIVE_ASSIGNMENT}
          LEFT JOIN staff s ON s.id = a.health_worker_id
         ORDER BY u.created_at DESC LIMIT 500`,
     );
@@ -60,7 +60,7 @@ export function adminApi(db: Db): Router {
   // first. A girl whose language no worker speaks is left for the admin to assign by hand.
   r.post("/assign-unassigned", async (req, res) => {
     const girls = await db.query<{ id: number; language: string | null }>(
-      `SELECT u.id, u.language FROM users u WHERE NOT EXISTS (SELECT 1 FROM assignments a WHERE a.girl_id = u.id AND a.ended_at IS NULL) ORDER BY u.created_at`,
+      `SELECT u.id, u.language FROM users u WHERE NOT EXISTS (SELECT 1 FROM assignments a WHERE a.girl_id = u.id AND ${ACTIVE_ASSIGNMENT}) ORDER BY u.created_at`,
     );
     const workers = await db.query<{ id: number; languages: string[]; girls: number }>(
       `SELECT s.id, s.languages, (SELECT count(*)::int FROM assignments a WHERE a.health_worker_id = s.id AND a.ended_at IS NULL) AS girls
@@ -75,6 +75,7 @@ export function adminApi(db: Db): Router {
         noWorker[lang] = (noWorker[lang] ?? 0) + 1;
         continue;
       }
+      await db.query(`UPDATE assignments SET ended_at = now() WHERE girl_id = $1 AND ended_at IS NULL`, [g.id]); // an old worker who left
       await db.query(`INSERT INTO assignments (health_worker_id, girl_id, assigned_by) VALUES ($1,$2,$3)`, [w.id, g.id, workerOf(req).id]);
       w.girls++;
       assigned++;

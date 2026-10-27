@@ -1,4 +1,5 @@
 import { Router, type Request, type RequestHandler } from "express";
+import { endAssignmentsOf } from "../auth/access.js";
 import type { Db } from "../db.js";
 import { auditReq, audit } from "../audit.js";
 import { hashPassword, passwordProblem } from "../privacy.js";
@@ -182,7 +183,8 @@ ${await staffForm(req, s, `/staff/admin/staff/${s.id}`, false)}`,
     );
     // A role change ends their sessions so new permissions apply at once.
     if (body.role !== s.role) await revokeAllSessions(db, s.id);
-    await auditReq(db, req, { action: "staff.update", targetType: "staff", targetId: s.id, details: { role: body.role, roleChanged: body.role !== s.role } });
+    const girlsUnassigned = !["nurse", "dada"].includes(body.role) ? await endAssignmentsOf(db, s.id) : 0;
+    await auditReq(db, req, { action: "staff.update", targetType: "staff", targetId: s.id, details: { role: body.role, roleChanged: body.role !== s.role, ...(girlsUnassigned ? { girlsUnassigned } : {}) } });
     res.redirect(`/staff/admin/staff/${s.id}?done=saved`);
   });
 
@@ -202,7 +204,8 @@ ${await staffForm(req, s, `/staff/admin/staff/${s.id}`, false)}`,
     await db.query(`UPDATE staff SET active = FALSE, deactivated_at = now() WHERE id = $1`, [s.id]);
     await revokeAllSessions(db, s.id);
     await db.query(`UPDATE cases SET assigned_to = NULL, assigned_at = NULL WHERE assigned_to = $1 AND status = 'open'`, [s.id]);
-    await auditReq(db, req, { action: "staff.deactivate", targetType: "staff", targetId: s.id });
+    const girls = await endAssignmentsOf(db, s.id);
+    await auditReq(db, req, { action: "staff.deactivate", targetType: "staff", targetId: s.id, details: { girlsUnassigned: girls } });
     return "?done=deactivated";
   });
   staffAction("reactivate", async (req, s) => {
