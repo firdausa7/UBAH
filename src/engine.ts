@@ -321,7 +321,7 @@ async function answerQuestion(db: Db, user: UserRow, a: Analysis, _question: str
   const lang = user.language ?? "en";
   // The topic models are trained on English: for her words in another language, read the translation.
   const topic = lang !== "en" && english ? (analyse(english, "en").topic ?? a.topic) : a.topic;
-  const hits = search(a.text, { topic: topic ?? undefined, lang, english: english ? expandCodedTerms(english).text : null });
+  const hits = search(a.text, { topic: topic ?? undefined, lang, english: english ? expandCodedTerms(english).text : null, ageBand: (user as any).age_band });
   // A weak match is "I'm not sure, talk to a Dada", never a guess. On the 84 labelled questions in
   // data/seed/topic.jsonl (with the topic boost; optimistic, as the topic model learnt from them):
   // at 1, 6 answers come from the wrong topic; at 2, 5, with no right answer lost. Danger signs
@@ -337,7 +337,7 @@ async function answerQuestion(db: Db, user: UserRow, a: Analysis, _question: str
   let body = item.body;
   if (!translated) body = `${body}\n${t(lang, "translation_pending")}`;
   // Citation: which approved topic this answer came from.
-  body = `${body}\n${t(lang, "answer_source", { title: item.title })}`;
+  body = `${body}\n${t(lang, "answer_source", { title: item.title })}\n${t(lang, "answer_not_advice")}`;
   const services = best.services.length ? best.services : TOPIC_SERVICES[best.topic] ?? [];
   await sendToUser(db, user, body, item.id, null, { contentVersionId: item.versionId, audioMediaId: translated ? item.audioMediaId : null });
   await setState(db, user, { step: "after_answer", lastServices: services, lastTopic: best.topic });

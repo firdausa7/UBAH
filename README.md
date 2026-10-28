@@ -272,6 +272,23 @@ Translation is for understanding only: girls' messages are translated into Engli
 
 To get a Google key: Google Cloud console → APIs & Services → enable **Cloud Translation API** → Credentials → Create API key → restrict it to the Cloud Translation API. Google processes the text outside Kenya: include it in the DPIA.
 
+### Health topics and what they cover
+
+Ubah answers only from content a named health-partner reviewer has approved, word for word. Every answer ends with "This is health information, not medical advice for you. For your own body, ask a nurse or visit a clinic." Each topic can be limited to girls who said they are 18 or older (content studio → topic → "Who may receive this answer"); everything is open to everyone until reviewers decide otherwise.
+
+| Area | Topics in Ubah | State |
+|---|---|---|
+| Puberty and menstrual health | `body-changes`, `periods-late`, `periods-pain`, `periods-products` | Starter drafts (in `content/topics/`): need a health partner's review and publishing |
+| Reproductive health and contraception | `family-planning-options`, `emergency-contraception`, `pregnancy-signs` | Starter drafts |
+| Infections and HIV | `sti-signs`, `hiv-testing` | Starter drafts |
+| Maternal and postnatal health | `pregnancy-danger` (starter draft); `antenatal-care`, `postnatal-care` | **Empty slots** with briefs: a health partner writes them |
+| General women's health | `pcos`, `endometriosis` | **Empty slots** with briefs |
+| Safety, violence, FGM | `safety-violence` (starter draft); `gbv-help`, `fgm-support` | **Empty slots** with briefs, to be written with a protection partner |
+| Feelings | `feelings` | Starter draft (wellbeing is Phase 4) |
+| Finding health services | Care, passes and the nearest clinic | Built (`/me/care`, SMS/WhatsApp/USSD) |
+
+Nothing in an empty slot reaches a girl. The content studio shows each topic per language (published, in review, draft, missing).
+
 ### Speech-to-text in each language
 
 Each language uses its own speech-to-text provider, set in `src/languages/<lang>.ts` and overridable per language in the environment, so each can use whichever measures best on your recordings:

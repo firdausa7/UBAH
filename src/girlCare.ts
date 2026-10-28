@@ -3,7 +3,7 @@ import { config } from "./config.js";
 import { issueAndSend } from "./engine.js";
 import type { UserRow } from "./channels/outbound.js";
 import { refreshCaches } from "./caches.js";
-import { localize, servingContent } from "./content/content.js";
+import { forHer, localize, servingContent } from "./content/content.js";
 import { clinicRatings } from "./ratings.js";
 import { SERVICES, SERVICE_MENU } from "./referrals.js";
 
@@ -56,10 +56,10 @@ export async function passesFor(db: Db, userId: number) {
 }
 
 // Published lessons in her language (else English, marked), and the sections still being written.
-export async function lessonsFor(db: Db, lang: string) {
+export async function lessonsFor(db: Db, lang: string, ageBand: string | null = null) {
   await refreshCaches(db);
   const lessons = servingContent()
-    .filter((c) => c.language === "en")
+    .filter((c) => c.language === "en" && forHer(c, ageBand))
     .map((c) => localize(c, lang))
     .map(({ item, translated }) => ({ id: item.id, category: item.topic, title: item.title, body: item.body, translated, audio: translated && item.audioMediaId ? `/app/api/audio/${item.audioMediaId}` : null }));
   const ready = new Set(lessons.map((l) => l.category));

@@ -246,6 +246,7 @@ export const en: Strings = {
   app_learn_soon: "Health workers are writing these lessons. Until then, you can ask a Dada or nurse privately.",
   wa_list_button: "Choose",
   answer_source: "(Ubah checked answer: {title})",
+  answer_not_advice: "This is health information, not medical advice for you. For your own body, ask a nurse or visit a clinic.",
   clinic_rating: "{yes} of {total} girls who went there said they were treated with respect.",
   near_hint: "Far from this clinic? Share your location, or reply NEAR and the name of your area or a place near you.",
   near_intro: "Nearest Ubah partner clinics:",

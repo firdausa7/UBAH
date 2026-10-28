@@ -176,7 +176,7 @@ export function meApi(db: Db): Router {
 
   // Lessons checked by health workers, in her language.
   r.get("/learn", async (req, res) => {
-    res.json(await lessonsFor(db, girlOf(req).language ?? "en"));
+    res.json(await lessonsFor(db, girlOf(req).language ?? "en", (girlOf(req) as any).age_band ?? null));
   });
 
   r.get("/messages", async (req, res) => {

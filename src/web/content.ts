@@ -181,6 +181,7 @@ ${canWrite && !t.archived && (!work || work.status === "draft") ? `<p><a class="
     const settings = canWrite
       ? `<form method="post" action="/staff/content/${esc(t.id)}/settings" class="card">${csrfField(req)}<h2>Topic settings</h2>
 ${select("Category", "category", Object.entries(CATEGORIES), t.category, { required: true })}${checks("Clinic services this topic can refer to", "services", Object.entries(SERVICES), t.services)}
+${select("Who may receive this answer", "audience", [["all", "Everyone"], ["adults", "Only girls who said they are 18 or older"]], t.audience ?? "all")}
 ${textarea("Brief for writers (never sent to girls)", "brief", t.brief ?? "", { rows: 3, hint: "What this topic should cover and who should write it" })}
 <label class="inline"><input type="checkbox" name="archived" value="1"${t.archived ? " checked" : ""}> Archived (never sent to girls)</label><p><button class="small">Save settings</button></p></form>`
       : "";
@@ -198,16 +199,18 @@ ${textarea("Brief for writers (never sent to girls)", "brief", t.brief ?? "", { 
   r.post("/content/:topic/settings", writers, async (req, res) => {
     const category = String(req.body.category ?? "");
     if (!(category in CATEGORIES)) return res.redirect(`/staff/content/${encodeURIComponent(String(req.params.topic))}?error=invalid`);
-    const done = await db.query(`UPDATE content_topics SET category = $2, services = $3, archived = $4, brief = $5 WHERE id = $1 RETURNING id`, [
+    const audience = req.body.audience === "adults" ? "adults" : "all";
+    const done = await db.query(`UPDATE content_topics SET category = $2, services = $3, archived = $4, brief = $5, audience = $6 WHERE id = $1 RETURNING id`, [
       String(req.params.topic),
       category,
       many(req.body.services).filter((s) => s in SERVICES),
       Boolean(req.body.archived),
       text(req.body.brief, 2000),
+      audience,
     ]);
     if (!done.length) return res.status(404).send("Not found");
     invalidateCaches();
-    await auditReq(db, req, { action: "content.settings", targetType: "content", targetId: done[0].id, details: { archived: Boolean(req.body.archived) } });
+    await auditReq(db, req, { action: "content.settings", targetType: "content", targetId: done[0].id, details: { archived: Boolean(req.body.archived), audience } });
     res.redirect(`/staff/content/${done[0].id}?done=saved`);
   });
 

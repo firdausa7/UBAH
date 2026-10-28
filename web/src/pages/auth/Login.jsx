@@ -10,7 +10,8 @@ import { QuickExit } from '../../ui/QuickExit.jsx'
 // Staff: login + password, then their usual second step. The server sends each to their own area.
 
 export default function Login() {
-  const [lang, setLang] = useState(savedLanguage())
+  // Somali first: the sign-in page opens in Somali unless she chose another language before.
+  const [lang, setLang] = useState(savedLanguage() || 'so')
   const { session } = useSession()
   if (session === undefined) return <Waiting />
   if (session) {

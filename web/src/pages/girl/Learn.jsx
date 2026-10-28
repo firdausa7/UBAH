@@ -26,6 +26,7 @@ export default function Learn() {
           {open.audio && <audio controls preload="none" src={open.audio} className="mb-4 w-full" />}
           <p className="text-[17px] whitespace-pre-line text-text">{open.body}</p>
           {!open.translated && <p className="mt-4 text-[14px] text-muted">{t('translation_pending')}</p>}
+          <p className="mt-4 rounded-2xl bg-soft px-4 py-3 text-[14px] text-text">{t('answer_not_advice')}</p>
         </article>
       </main>
     )

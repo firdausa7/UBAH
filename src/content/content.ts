@@ -22,6 +22,7 @@ export interface ContentItem {
   sources: string;
   body: string;
   audioMediaId: number | null; // recorded voice answer, if any
+  audience: "all" | "adults"; // adults: only for girls who said they are 18 or older
 }
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -83,7 +84,7 @@ export async function importContentFiles(db: Db, dir = CONTENT_DIR, authorId: nu
 export async function loadServingContent(db: Db, allowDraft = config.allowDraftContent): Promise<ContentItem[]> {
   const rows = await db.query(
     `SELECT DISTINCT ON (v.topic_id, v.language)
-            v.id, v.topic_id, v.language, v.title, v.body, v.keywords, v.sources, v.status, v.audio_media_id, t.category, t.services
+            v.id, v.topic_id, v.language, v.title, v.body, v.keywords, v.sources, v.status, v.audio_media_id, t.category, t.services, t.audience
        FROM content_versions v JOIN content_topics t ON t.id = v.topic_id
       WHERE NOT t.archived AND v.status IN (${allowDraft ? "'published','approved','in_review','draft'" : "'published'"})
       ORDER BY v.topic_id, v.language, (v.status = 'published') DESC, v.version DESC`,
@@ -100,6 +101,7 @@ export async function loadServingContent(db: Db, allowDraft = config.allowDraftC
     sources: r.sources,
     body: r.body,
     audioMediaId: r.audio_media_id ?? null,
+    audience: r.audience === "adults" ? "adults" : "all",
   }));
 }
 
@@ -127,13 +129,16 @@ export interface Hit {
   score: number;
 }
 
-export function search(query: string, opts: { topic?: string; limit?: number; lang?: string; english?: string | null } = {}): Hit[] {
+// A topic marked for adults goes only to a girl who said she is 18 or older.
+export const forHer = (item: Pick<ContentItem, "audience">, ageBand: string | null | undefined) => item.audience !== "adults" || ageBand === "18_plus";
+
+export function search(query: string, opts: { topic?: string; limit?: number; lang?: string; english?: string | null; ageBand?: string | null } = {}): Hit[] {
   // Her language's published versions and the English ones, each matched in its own language.
   // English content is matched against the English translation of her message, never against her
   // own words read as English (the Somali "way" is not the English "way"). No translation: no match.
   const lang = opts.lang ?? "en";
   const langs = [...new Set([lang, "en"])];
-  const docs = serving.filter((c) => langs.includes(c.language));
+  const docs = serving.filter((c) => langs.includes(c.language) && forHer(c, opts.ageBand));
   const toksOf = (d: ContentItem) => tokenize(`${d.title} ${d.keywords.join(" ")} ${d.keywords.join(" ")} ${d.body}`, d.language);
   const docTokens = docs.map(toksOf);
   const englishQuery = lang === "en" ? query : (opts.english ?? "");
