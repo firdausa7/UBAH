@@ -18,6 +18,7 @@ import { clinicRouter } from "./web/clinic.js";
 import { dashboardRouter } from "./web/dashboard.js";
 import { paymentsRouter } from "./web/payments.js";
 import { modelsRouter } from "./web/models.js";
+import { safeguardingRouter } from "./web/safeguarding.js";
 import { appApiRouter } from "./web/appApi.js";
 import { apiRouter } from "./api/index.js";
 import { landingRouter } from "./web/landing.js";
@@ -292,6 +293,7 @@ export function createApp(db: Db, opts: AppOptions = {}) {
   app.use("/staff", stringsRouter(db));
   app.use("/staff", paymentsRouter(db));
   app.use("/staff", modelsRouter(db));
+  app.use("/staff", safeguardingRouter(db));
   app.use("/staff", staffRouter(db));
 
   // ---- The React app (web/dist): login, girls' space, worker dashboard, admin ----

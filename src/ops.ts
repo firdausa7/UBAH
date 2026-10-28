@@ -21,6 +21,8 @@ export interface OpsStatus {
   // Daily attention (not "needs a person now": these don't make ok false):
   messagesWaiting24h: number; // girls' messages her worker hasn't opened for a day
   girlsUnassignedWaiting24h: number; // girls with no worker and a message waiting a day: assign them
+  reportsUntaken24h: number; // confidential reports no protection officer has taken for a day
+  reportFollowUpsDue: number; // follow-up dates that have passed on open reports
 }
 
 export async function opsStatus(db: Db): Promise<OpsStatus> {
@@ -35,7 +37,9 @@ export async function opsStatus(db: Db): Promise<OpsStatus> {
        (SELECT count(*)::int FROM inbound_messages WHERE processed_at IS NULL AND received_at < now() - interval '5 minutes') AS inbound,
        (SELECT count(*)::int FROM dada_payouts WHERE status = 'processing' AND updated_at < now() - interval '1 hour') AS payouts,
        (SELECT count(*)::int FROM messages m WHERE ${WAITING_OVER_A_DAY} AND EXISTS (SELECT 1 FROM assignments a WHERE a.girl_id = m.user_id AND ${ACTIVE_ASSIGNMENT})) AS waiting,
-       (SELECT count(DISTINCT m.user_id)::int FROM messages m WHERE ${WAITING_OVER_A_DAY} AND NOT EXISTS (SELECT 1 FROM assignments a WHERE a.girl_id = m.user_id AND ${ACTIVE_ASSIGNMENT})) AS unassigned`,
+       (SELECT count(DISTINCT m.user_id)::int FROM messages m WHERE ${WAITING_OVER_A_DAY} AND NOT EXISTS (SELECT 1 FROM assignments a WHERE a.girl_id = m.user_id AND ${ACTIVE_ASSIGNMENT})) AS unassigned,
+       (SELECT count(*)::int FROM safeguarding_reports WHERE status <> 'closed' AND assigned_to IS NULL AND created_at < now() - interval '24 hours') AS reports_untaken,
+       (SELECT count(*)::int FROM safeguarding_reports WHERE status <> 'closed' AND follow_up_at IS NOT NULL AND follow_up_at <= now()) AS followups`,
   );
   const s: OpsStatus = {
     ok: false,
@@ -49,6 +53,8 @@ export async function opsStatus(db: Db): Promise<OpsStatus> {
     payoutsUnknown: r.payouts,
     messagesWaiting24h: r.waiting,
     girlsUnassignedWaiting24h: r.unassigned,
+    reportsUntaken24h: r.reports_untaken,
+    reportFollowUpsDue: r.followups,
   };
   s.ok = s.urgentUnanswered15m === 0 && s.staffAlertsFailedNow === 0 && s.jobsQueuedOverdue10m === 0 && s.inboundStuck === 0;
   return s;
@@ -70,6 +76,8 @@ export function opsPrometheus(s: OpsStatus): string {
       line("payouts_unknown", "M-Pesa payments with no answer for an hour", s.payoutsUnknown),
       line("messages_waiting_24h", "Girls' messages her health worker hasn't opened for a day", s.messagesWaiting24h),
       line("girls_unassigned_waiting_24h", "Girls with no health worker and a message waiting a day", s.girlsUnassignedWaiting24h),
+      line("reports_untaken_24h", "Confidential reports no protection officer has taken for a day", s.reportsUntaken24h),
+      line("report_followups_due", "Follow-up dates passed on open confidential reports", s.reportFollowUpsDue),
     ].join("\n") + "\n"
   );
 }

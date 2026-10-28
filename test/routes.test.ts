@@ -16,6 +16,7 @@ import { clinicRouter } from "../src/web/clinic.js";
 import { dashboardRouter } from "../src/web/dashboard.js";
 import { paymentsRouter } from "../src/web/payments.js";
 import { modelsRouter } from "../src/web/models.js";
+import { safeguardingRouter } from "../src/web/safeguarding.js";
 import { appApiRouter } from "../src/web/appApi.js";
 import { landingRouter } from "../src/web/landing.js";
 import { authApi } from "../src/api/auth.js";
@@ -83,6 +84,7 @@ describe("route inventory", () => {
         stringsRouter(db),
         paymentsRouter(db),
         modelsRouter(db),
+        safeguardingRouter(db),
         staffRouter(db),
       ].flatMap((router: any) => routesOf(router.stack, "/staff")),
     ].sort();

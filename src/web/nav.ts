@@ -12,9 +12,10 @@ export function nav(req: Request): string {
     ["/staff/dashboard", "Dashboard", ["admin", "nurse", "partner"]],
     ["/staff/models", "Models", ["admin", "nurse"]],
     ["/staff/content", "Content", ["admin", "reviewer", "editor"]],
+    ["/staff/safeguarding", "Reports", ["protection"]],
     ["/staff/payments", "Payments", ["admin"]],
     ["/staff/admin", "Admin", ["admin"]],
-    ["/staff/account", "Account", ["admin", "nurse", "dada", "clinic", "partner", "reviewer", "editor"]],
+    ["/staff/account", "Account", ["admin", "nurse", "dada", "clinic", "partner", "reviewer", "editor", "protection"]],
   ];
   return (
     links.filter(([, , roles]) => roles.includes(s.role)).map(([href, label]) => `<a href="${href}">${label}</a>`).join("") +

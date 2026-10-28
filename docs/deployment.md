@@ -142,6 +142,7 @@ Ubah refuses to start in production if a language is set to MMS or Google withou
 | Worker stopped | same endpoint | `jobs_overdue_10m > 0` |
 | Messages stuck | same endpoint | `inbound_stuck > 0` |
 | **Girls waiting** (daily check) | same endpoint | `messages_waiting_24h > 0` (a worker hasn't opened a girl's message for a day: see `/admin`, where each worker shows how many) or `girls_unassigned_waiting_24h > 0` (assign them in `/admin`). These don't turn `/health/ops` red: check them each morning, or alert in working hours only |
+| **Confidential reports** (daily check) | same endpoint | `reports_untaken_24h > 0` (no protection officer has taken a report for a day) or `report_followups_due > 0` |
 | Backups | the backup script pings a monitor | no ping for 26 hours |
 | Certificate | your monitor's TLS check | expires in < 14 days |
 

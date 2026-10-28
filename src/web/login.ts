@@ -22,6 +22,7 @@ export const HOME: Record<Role, string> = {
   partner: "/staff/dashboard",
   reviewer: "/staff/content",
   editor: "/staff/content",
+  protection: "/staff/safeguarding",
 };
 
 const SMS_CODE_MINUTES = 5;

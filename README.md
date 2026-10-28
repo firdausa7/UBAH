@@ -149,6 +149,7 @@ Every page is server-rendered, works on a cheap Android phone on 3G, and shows e
 | Dada | Dada-level cases (safety, "talk to a person") and cases assigned to her; medical and self-harm cases go to nurses |
 | Clinic desk | Pass checks only, never who the girl is |
 | Partner | Dashboard, CSV and monthly PDF (aggregates only) |
+| Protection officer | The only role that can open confidential reports (`/staff/safeguarding`): take a report, change its status (new → in review → referred → follow-up → closed, each with a required note), refer to verified contacts, set follow-up dates, add notes. Every look is in the access log; notes are encrypted |
 | Health-partner reviewer | Approves or returns content, translations and glossary terms; can never approve their own work |
 | Editor / translator | Writes content and translations, uploads recorded voice answers, publishes approved versions |
 

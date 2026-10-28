@@ -64,7 +64,7 @@ export async function isAssigned(db: Db, workerId: number, girlId: number): Prom
 }
 
 // messages: her messages in the inbox list; conversation: her whole conversation opened on purpose.
-export type AccessWhat = "profile" | "messages" | "conversation" | "message" | "voice";
+export type AccessWhat = "profile" | "messages" | "conversation" | "message" | "voice" | "report";
 
 // One line per look, not per screen refresh: the same person seeing the same thing about the same girl
 // within 10 minutes is the same look (the inbox refreshes every few seconds).

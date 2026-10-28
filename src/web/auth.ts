@@ -8,8 +8,8 @@ import { refreshCaches } from "../caches.js";
 // Staff sessions live in the database (only a hash of the token is stored), so logout,
 // deactivation and password changes end a session at once. No girl ever logs in.
 
-export type Role = "admin" | "nurse" | "dada" | "clinic" | "partner" | "reviewer" | "editor";
-export const ROLES: Role[] = ["admin", "nurse", "dada", "clinic", "partner", "reviewer", "editor"];
+export type Role = "admin" | "nurse" | "dada" | "clinic" | "partner" | "reviewer" | "editor" | "protection";
+export const ROLES: Role[] = ["admin", "nurse", "dada", "clinic", "partner", "reviewer", "editor", "protection"];
 export const ALL_ROLES = ROLES;
 export const ROLE_LABEL: Record<Role, string> = {
   admin: "Admin",
@@ -19,6 +19,7 @@ export const ROLE_LABEL: Record<Role, string> = {
   partner: "Partner (reports only)",
   reviewer: "Health-partner reviewer",
   editor: "Content editor / translator",
+  protection: "Protection officer (confidential reports)",
 };
 export interface Staff {
   id: number;
@@ -36,7 +37,7 @@ export type MfaMethod = "totp" | "sms" | null;
 // Clinic desks see only the services on a pass, so they log in with a password alone.
 export function mfaMethod(role: Role): MfaMethod {
   if (!config.security.mfaRequired) return null;
-  if (role === "admin" || role === "nurse" || role === "partner" || role === "reviewer" || role === "editor") return "totp";
+  if (role === "admin" || role === "nurse" || role === "partner" || role === "reviewer" || role === "editor" || role === "protection") return "totp";
   if (role === "dada") return "sms";
   return null;
 }

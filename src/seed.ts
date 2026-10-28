@@ -49,6 +49,7 @@ export async function seedDemo(db: Db, opts: { staffPassword?: string } = {}) {
     ["Partner viewer", "partner", "partner", null, null],
     ["Reviewer Demo", "reviewer", "reviewer", null, null],
     ["Editor Demo", "editor", "editor", null, null],
+    ["Protection Demo", "protection", "protection", null, null],
   ];
   for (const [name, login, role, clinicId, phone] of staff) {
     await db.query(
@@ -62,7 +63,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   const { getDb } = await import("./db.js");
   const db = await getDb();
   await seedDemo(db);
-  console.log("Seeded demo clinics and staff logins: admin, nurse, dada, clinic-a, partner, reviewer, editor");
+  console.log("Seeded demo clinics and staff logins: admin, nurse, dada, clinic-a, partner, reviewer, editor, protection");
   console.log(`Password: ${process.env.DEMO_STAFF_PASSWORD ? "(from DEMO_STAFF_PASSWORD)" : "change-me-now"} — change it before sharing.`);
   console.log("Admin, nurse and partner set up an authenticator app at first login; the Dada's SMS code appears in the server log (mock mode).");
   await db.close();

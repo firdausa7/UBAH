@@ -73,3 +73,82 @@ describe("confidential reports: her side", () => {
     }
   });
 });
+
+describe("confidential reports: protection officers only", () => {
+  const officer = () => staffClient(app, db, "protection");
+  let client: Awaited<ReturnType<typeof staffClient>>;
+  let reportId: number;
+
+  beforeAll(async () => {
+    client = await officer();
+    const { a } = await webGirl("0712960100");
+    await a.post("/api/me/report").set(H).send({ category: "harassment", description: "a man follows me home from the market" });
+    const r = await a.post("/api/me/report").set(H).send({ category: "abuse", inDanger: true, description: "my uncle hits me" });
+    reportId = r.body.id;
+  });
+
+  it("puts reports from girls in danger first, and shows the priority as a suggestion", async () => {
+    const queue = (await client.get("/staff/safeguarding")).text;
+    expect(queue.indexOf("In danger")).toBeLessThan(queue.indexOf("Harassment"));
+    expect(queue).toContain("Suggested: high priority");
+    expect(queue).toContain("it is a suggestion, check it yourself");
+  });
+
+  it("is refused to nurses, Dadas and admins", async () => {
+    for (const login of ["nurse", "dada", "admin"]) {
+      const s = await staffClient(app, db, login);
+      expect((await s.get("/staff/safeguarding")).status, login).toBe(403);
+      expect((await s.get(`/staff/safeguarding/${reportId}`)).status, login).toBe(403);
+    }
+  });
+
+  it("logs every look, and shows her words only to the officer", async () => {
+    const page = (await client.get(`/staff/safeguarding/${reportId}`)).text;
+    expect(page).toContain("my uncle hits me");
+    expect(page).toContain("She said she is in danger now");
+    const [rep] = await db.query(`SELECT user_id FROM safeguarding_reports WHERE id = $1`, [reportId]);
+    expect((await db.query(`SELECT 1 FROM access_log WHERE girl_id = $1 AND staff_login = 'protection' AND what = 'report' AND target_id = $2`, [rep.user_id, String(reportId)])).length).toBe(1);
+  });
+
+  it("records each status change with a required note; refuses changes the workflow doesn't allow", async () => {
+    expect((await client.post(`/staff/safeguarding/${reportId}/status`, { to: "referred", note: "skipping review" })).headers.location).toMatch(/error=invalid/);
+    expect((await client.post(`/staff/safeguarding/${reportId}/status`, { to: "in_review", note: "" })).headers.location).toMatch(/error=invalid/);
+    expect((await client.post(`/staff/safeguarding/${reportId}/status`, { to: "in_review", note: "Spoke with the Dada on duty" })).headers.location).toMatch(/done=saved/);
+    const [rep] = await db.query(`SELECT status, assigned_to FROM safeguarding_reports WHERE id = $1`, [reportId]);
+    expect(rep.status).toBe("in_review");
+    expect(rep.assigned_to).toBeTruthy(); // the officer who acted takes it
+    const [e] = await db.query(`SELECT from_status, to_status, note_enc FROM safeguarding_events WHERE report_id = $1 AND kind = 'status'`, [reportId]);
+    expect(e).toMatchObject({ from_status: "new", to_status: "in_review" });
+    expect(e.note_enc).not.toContain("Dada on duty"); // notes are encrypted
+    expect((await db.query(`SELECT 1 FROM audit_log WHERE action = 'report.status' AND target_id = $1`, [String(reportId)])).length).toBe(1);
+  });
+
+  it("refers only to verified contacts, moves the report to referred, and keeps a follow-up date", async () => {
+    const [site] = await db.query(`INSERT INTO sites (name) VALUES ('Test site') RETURNING id`);
+    const [unverified] = await db.query(`INSERT INTO protection_contacts (site_id, name, verified) VALUES ($1,'Unchecked',FALSE) RETURNING id`, [site.id]);
+    const [verified] = await db.query(`INSERT INTO protection_contacts (site_id, name, organisation, verified) VALUES ($1,'GBV desk','Partner NGO',TRUE) RETURNING id`, [site.id]);
+    expect((await client.post(`/staff/safeguarding/${reportId}/referral`, { contact_id: String(unverified.id), note: "x" })).headers.location).toMatch(/error=invalid/);
+    await client.post(`/staff/safeguarding/${reportId}/referral`, { contact_id: String(verified.id), note: "Case manager will call her Dada" });
+    expect((await db.query(`SELECT status FROM safeguarding_reports WHERE id = $1`, [reportId]))[0].status).toBe("referred");
+    await client.post(`/staff/safeguarding/${reportId}/follow-up`, { at: "2026-11-05" });
+    await client.post(`/staff/safeguarding/${reportId}/note`, { note: "Her Dada confirmed she is safe tonight" });
+    const page = (await client.get(`/staff/safeguarding/${reportId}`)).text;
+    expect(page).toContain("Referred to GBV desk (Partner NGO)");
+    expect(page).toContain("Case manager will call her Dada");
+    expect(page).toContain("Her Dada confirmed she is safe tonight");
+    expect(page).toContain("2026-11-05");
+  });
+});
+
+describe("monitoring confidential reports", () => {
+  it("counts reports nobody has taken for a day, and follow-ups that are due", async () => {
+    const { opsStatus } = await import("../src/ops.js");
+    const before = await opsStatus(db);
+    const { a } = await webGirl("0712960200");
+    const r = await a.post("/api/me/report").set(H).send({ category: "other" });
+    await db.query(`UPDATE safeguarding_reports SET created_at = now() - interval '2 days', follow_up_at = now() - interval '1 hour' WHERE id = $1`, [r.body.id]);
+    const after = await opsStatus(db);
+    expect(after.reportsUntaken24h).toBe(before.reportsUntaken24h + 1);
+    expect(after.reportFollowUpsDue).toBe(before.reportFollowUpsDue + 1);
+  });
+});
