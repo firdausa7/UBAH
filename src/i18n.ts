@@ -320,6 +320,12 @@ export const en: Strings = {
   web_data_download: "Download my data",
   web_data_download_warn: "The file stays on this phone. If others use this phone, delete it afterwards.",
   web_data_change: "To change your language or what you share, use Settings. To delete everything, use Wipe my history.",
+  web_age_q: "How old are you? (You don't have to say.)",
+  web_age_under_15: "Under 15",
+  web_age_15_17: "15 to 17",
+  web_age_18_plus: "18 or older",
+  web_age_not_said: "I'd rather not say",
+  web_confidential: "What you tell Ubah stays private. But if you or another child may be in danger, a Dada or nurse may need to act to keep you safe.",
   web_intro_private: "We never ask your name. Your phone number is kept locked, only to recognise you. Ubah locks itself with your PIN, and Quick exit leaves at once.",
 };
 

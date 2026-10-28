@@ -66,7 +66,7 @@ export function inboxRouter(db: Db): Router {
     const id = Number(req.params.id);
     const [c] = Number.isInteger(id)
       ? await db.query(
-          `SELECT c.*, u.anon_id, u.language, u.channel, a.name AS assignee, a.role AS assignee_role, s.name AS site_name
+          `SELECT c.*, u.anon_id, u.language, u.channel, u.age_band, a.name AS assignee, a.role AS assignee_role, s.name AS site_name
              FROM cases c JOIN users u ON u.id = c.user_id LEFT JOIN staff a ON a.id = c.assigned_to LEFT JOIN sites s ON s.id = c.site_id WHERE c.id = $1`,
           [id],
         )
@@ -93,7 +93,7 @@ export function inboxRouter(db: Db): Router {
       lang: String(req.query.lang ?? "") in LANGUAGES ? String(req.query.lang) : "",
     };
     const cases = await db.query(
-      `SELECT c.*, u.anon_id, u.language, u.channel, a.name AS assignee FROM cases c JOIN users u ON u.id = c.user_id LEFT JOIN staff a ON a.id = c.assigned_to
+      `SELECT c.*, u.anon_id, u.language, u.channel, u.age_band, a.name AS assignee FROM cases c JOIN users u ON u.id = c.user_id LEFT JOIN staff a ON a.id = c.assigned_to
         WHERE c.status = $1 AND ${visibleSql(me, "$2")}
           AND (NOT $3 OR c.urgent) AND (NOT $4 OR c.assigned_to = $2) AND (NOT $5 OR c.assigned_to IS NULL) AND ($6 = '' OR u.language = $6)
         ORDER BY c.urgent DESC, c.created_at ${status === "open" ? "ASC" : "DESC"} LIMIT 200`,
@@ -207,7 +207,7 @@ ${contacts.length ? `<h3>Referral contacts</h3><ul class="timeline">${contacts.m
       page(
         `Case ${c.id}`,
         `<p class="noprint"><a href="/staff/inbox">← Inbox</a></p>${notice(req.query)}<div class="card"><span class="tag ${c.urgent ? "urgent" : ""}">${esc(REASON_LABEL[c.reason] ?? c.reason)}</span> <span class="tag">${c.level === "nurse" ? "Nurse level" : "Dada level"}</span> ${open ? "" : `<span class="tag ok">Handled</span>`}
-<h1 style="margin-top:10px"><em>Girl</em> ${esc(c.anon_id)}</h1><p class="muted">${esc(workerLabel(c.language))} · ${esc(c.channel)} · opened ${ago(c.created_at)} · ${c.assignee ? `with ${esc(c.assignee)}` : "unassigned"}</p>
+<h1 style="margin-top:10px"><em>Girl</em> ${esc(c.anon_id)}</h1>${c.age_band === "under_15" || c.age_band === "15_17" ? `<p><span class="tag urgent">Under 18</span> She said she is ${c.age_band === "under_15" ? "under 15" : "15 to 17"}: follow the child-safeguarding procedure.</p>` : ""}<p class="muted">${esc(workerLabel(c.language))} · ${esc(c.channel)} · opened ${ago(c.created_at)} · ${c.assignee ? `with ${esc(c.assignee)}` : "unassigned"}</p>
 <div class="row">${actions}</div>${assignForm}</div>
 <div class="card"><h2>Conversation</h2>${thread}</div>
 ${open ? `<div class="card"><h2>Reply</h2><form method="post" action="/staff/cases/${c.id}/reply">${csrfField(req)}

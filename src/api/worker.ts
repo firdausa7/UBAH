@@ -38,6 +38,9 @@ function toWorkerMessage(m: any, workerId: number, shareVoice: boolean) {
   };
 }
 
+// Under 18 (if she said): her worker follows the child-safeguarding procedure.
+const isMinor = (band: string | null) => band === "under_15" || band === "15_17";
+
 // Latest consent per girl and scope, as SQL (for the inbox query).
 const SHARES = (scope: "messages" | "voice") =>
   `COALESCE((SELECT granted FROM consents k WHERE k.user_id = m.user_id AND k.scope = '${scope}' ORDER BY k.id DESC LIMIT 1), FALSE)`;
@@ -79,7 +82,7 @@ export function workerApi(db: Db): Router {
     const channel = q("channel", (v) => ["web", "whatsapp", "sms", "app", "simulator"].includes(v));
     const status = q("status", (v) => ["new", "open", "resolved"].includes(v));
     const rows = await db.query<any>(
-      `SELECT ${MESSAGE_COLUMNS}, u.anon_id, u.language AS girl_language, ${SHARES("voice")} AS share_voice
+      `SELECT ${MESSAGE_COLUMNS}, u.anon_id, u.language AS girl_language, u.age_band, ${SHARES("voice")} AS share_voice
          FROM messages m
          JOIN assignments a ON a.girl_id = m.user_id AND a.health_worker_id = $1 AND a.ended_at IS NULL
          JOIN users u ON u.id = m.user_id
@@ -91,7 +94,7 @@ export function workerApi(db: Db): Router {
     );
     for (const id of new Set(rows.map((m) => m.user_id as number))) await logAccess(db, req, id, "messages");
     res.json({
-      messages: rows.map((m) => ({ ...toWorkerMessage(m, w.id, m.share_voice), girl: { id: m.user_id, anonId: m.anon_id, language: m.girl_language, languageLabel: workerLabel(m.girl_language) } })),
+      messages: rows.map((m) => ({ ...toWorkerMessage(m, w.id, m.share_voice), girl: { id: m.user_id, anonId: m.anon_id, language: m.girl_language, languageLabel: workerLabel(m.girl_language), minor: isMinor(m.age_band) } })),
     });
   });
 
@@ -117,7 +120,7 @@ export function workerApi(db: Db): Router {
       await db.query(`UPDATE messages SET status = 'open' WHERE id = $1`, [m.id]);
       m.status = "open";
     }
-    const [girl] = await db.query<any>(`SELECT id, anon_id, language, channel FROM users WHERE id = $1`, [m.user_id]);
+    const [girl] = await db.query<any>(`SELECT id, anon_id, language, channel, age_band FROM users WHERE id = $1`, [m.user_id]);
     const replies = await db.query<any>(
       `SELECT r.id, r.english_text, r.translated_text, r.translation_source, r.created_at, s.name AS worker, sm.read_at, sm.channel AS sent_channel
          FROM replies r JOIN staff s ON s.id = r.worker_id LEFT JOIN messages sm ON sm.id = r.sent_message_id WHERE r.message_id = $1 ORDER BY r.id`,
@@ -125,7 +128,7 @@ export function workerApi(db: Db): Router {
     );
     res.json({
       message: toWorkerMessage(m, w.id, m.share_voice),
-      girl: { id: girl.id, anonId: girl.anon_id, language: girl.language, languageLabel: workerLabel(girl.language) },
+      girl: { id: girl.id, anonId: girl.anon_id, language: girl.language, languageLabel: workerLabel(girl.language), minor: isMinor(girl.age_band), ageBand: girl.age_band },
       replies: replies.map((r) => ({ id: r.id, english: r.english_text, translated: r.translated_text, source: r.translation_source, worker: r.worker, at: r.created_at, seenAt: r.read_at, channel: r.sent_channel })),
       templates: (await reviewedTemplates(db, girl.language ?? "en")).map((t) => ({ id: t.id, english: t.english, translated: t.translated })),
     });

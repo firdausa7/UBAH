@@ -26,6 +26,7 @@ Ubah processes **health data** (sexual and reproductive health questions) and da
 | Assignments and consents | Admin; the girl | Which health worker looks after her; what she shares with them | Database; consent history kept (latest choice counts) | [period] |
 | English translations of her messages, and of replies | Translation provider | Her worker understands her; she understands the reply | Database, next to the original | [period] |
 | Access log (which staff member looked at which girl's data) | System | Accountability | Append-only table; no message text | [period] |
+| Age band (only if she chooses to say: under 15, 15–17, 18+, not said) | The girl | Child safeguarding: her worker is shown "Under 18" and follows the child-safeguarding procedure | Database; no date of birth | Until DELETE |
 | Push address of her phone (only if she switches notifications on) | Her browser | Tell her phone "new message" | One URL per phone; the push carries no data, so the push service (Google, Apple, Mozilla) never receives message content | Until she switches it off, signs out or wipes her history |
 | Language, area/site (if she shares it) | The girl | Language of replies; nearest clinic | Site and area name only; location coordinates are never stored | [period] |
 | Referral passes, check-in answers (visited, respect) | The girl | Closing the loop; clinic dignity scores | Database; scores shown only from 5 answers | [period] |

@@ -105,6 +105,7 @@ function GirlLogin({ lang, setLang }) {
   const [pin, setPin] = useState('')
   const [code, setCode] = useState('')
   const [newPin, setNewPin] = useState('')
+  const [ageBand, setAgeBand] = useState('')
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
 
@@ -177,7 +178,7 @@ function GirlLogin({ lang, setLang }) {
     )
 
   return (
-    <form onSubmit={(e) => (e.preventDefault(), run(async () => finish(await api.post('/auth/girl/verify', { phone, code, pin: newPin, language: lang || 'en' }))))}>
+    <form onSubmit={(e) => (e.preventDefault(), run(async () => finish(await api.post('/auth/girl/verify', { phone, code, pin: newPin, language: lang || 'en', ...(ageBand ? { ageBand } : {}) }))))}>
       <Alert>{error}</Alert>
       <p className="mb-5 rounded-2xl bg-lavender px-4 py-3 text-[15px] text-plum">{t('web_code_sent')}</p>
       <label className="mb-4 block">
@@ -189,6 +190,23 @@ function GirlLogin({ lang, setLang }) {
         <input className="field text-center text-2xl tracking-[0.5em]" type="password" inputMode="numeric" autoComplete="new-password" pattern="[0-9]{4}" maxLength={4} required value={newPin} onChange={(e) => setNewPin(e.target.value.replace(/\D/g, ''))} />
       </label>
       <p className="mb-5 text-[14px] text-muted">{t('web_new_pin_hint')}</p>
+      <fieldset className="mb-5">
+        <legend className="label">{t('web_age_q')}</legend>
+        <div className="grid grid-cols-2 gap-2">
+          {['under_15', '15_17', '18_plus', 'not_said'].map((band) => (
+            <button
+              key={band}
+              type="button"
+              onClick={() => setAgeBand(ageBand === band ? '' : band)}
+              aria-pressed={ageBand === band}
+              className={`min-h-11 rounded-2xl border px-3 text-[15px] ${ageBand === band ? 'border-accent bg-lavender font-medium text-plum' : 'border-line bg-white text-text hover:border-accent'}`}
+            >
+              {t(`web_age_${band}`)}
+            </button>
+          ))}
+        </div>
+      </fieldset>
+      <p className="mb-5 rounded-2xl bg-blush px-4 py-3 text-[15px] text-rose-ink">{t('web_confidential')}</p>
       <fieldset className="mb-6">
         <legend className="label">{t('web_choose_language')}</legend>
         <div className="grid grid-cols-2 gap-2">

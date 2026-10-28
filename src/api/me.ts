@@ -9,6 +9,7 @@ import { clinicsFor, issuePassFor, lessonsFor, passesFor } from "../girlCare.js"
 import { eraseGirl } from "../erase.js";
 import { parseMenu } from "../channels/menu.js";
 import { pushEnabled, subscribe, unsubscribe, validEndpoint } from "../push.js";
+import { validAgeBand } from "../auth/girls.js";
 import { config } from "../config.js";
 
 // Her conversation as she sees it: her messages, Ubah's answers, and her health worker's replies in
@@ -55,6 +56,7 @@ export function meApi(db: Db): Router {
     res.json({
       anonId: g.anon_id,
       language: g.language,
+      ageBand: (g as any).age_band ?? null,
       // Her four options; a disabled language is never offered, and girls never see "Beta".
       languages: girlLanguages().map((l) => ({ code: l.code, name: l.name })),
       consents: await consents(db, g.id),
@@ -63,6 +65,11 @@ export function meApi(db: Db): Router {
 
   r.patch("/", async (req, res) => {
     const g = girlOf(req);
+    if (req.body && "ageBand" in req.body) {
+      if (!validAgeBand(req.body.ageBand)) return res.status(400).json({ error: "age" });
+      await db.query(`UPDATE users SET age_band = $2 WHERE id = $1`, [g.id, req.body.ageBand]);
+      if (!("language" in req.body)) return res.json({ ageBand: req.body.ageBand });
+    }
     const lang = String(req.body?.language ?? "");
     const l = languageConfig(lang);
     if (!l || l.status === "disabled") return res.status(400).json({ error: "language" });
@@ -74,7 +81,7 @@ export function meApi(db: Db): Router {
   // and never staff names or notes about her case).
   r.get("/data", async (req, res) => {
     const g = girlOf(req);
-    const [u] = await db.query<any>(`SELECT anon_id, language, channel, created_at FROM users WHERE id = $1`, [g.id]);
+    const [u] = await db.query<any>(`SELECT anon_id, language, age_band, channel, created_at FROM users WHERE id = $1`, [g.id]);
     const [worker] = await db.query<{ role: string }>(
       `SELECT s.role FROM assignments a JOIN staff s ON s.id = a.health_worker_id WHERE a.girl_id = $1 AND a.ended_at IS NULL AND s.active`,
       [g.id],
@@ -87,7 +94,7 @@ export function meApi(db: Db): Router {
     const [voice] = await db.query<{ n: number }>(`SELECT count(*)::int AS n FROM voice_notes WHERE user_id = $1`, [g.id]);
     const [devices] = await db.query<{ n: number }>(`SELECT count(*)::int AS n FROM push_subscriptions WHERE user_id = $1`, [g.id]);
     res.json({
-      account: { code: u.anon_id, language: u.language, channel: u.channel, joined: u.created_at, phone: "locked" },
+      account: { code: u.anon_id, language: u.language, ageBand: u.age_band ?? null, channel: u.channel, joined: u.created_at, phone: "locked" },
       sharing: await consents(db, g.id),
       healthWorker: worker ? worker.role : null,
       counts: { messages: messages.length, passes: passes.length, voiceRecordings: voice.n, notificationDevices: devices.n },

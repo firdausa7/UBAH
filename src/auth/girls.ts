@@ -57,7 +57,10 @@ async function checkCode(db: Db, hash: string, code: string): Promise<boolean> {
 
 // A correct code proves the phone is hers: finds her (from any channel) or creates her, and sets her PIN.
 // Her channel is left as it is: a girl who uses WhatsApp keeps getting replies there.
-export async function verifyCodeAndSetPin(db: Db, phone: string, code: string, pin: string, language?: string): Promise<UserRow | "bad_code" | string> {
+export const AGE_BANDS = ["under_15", "15_17", "18_plus", "not_said"] as const;
+export const validAgeBand = (v: unknown): v is (typeof AGE_BANDS)[number] => typeof v === "string" && (AGE_BANDS as readonly string[]).includes(v);
+
+export async function verifyCodeAndSetPin(db: Db, phone: string, code: string, pin: string, language?: string, ageBand?: string): Promise<UserRow | "bad_code" | string> {
   if (!validPhone(phone)) return "bad_code";
   const problem = pinProblem(pin);
   if (problem) return problem;
@@ -68,17 +71,17 @@ export async function verifyCodeAndSetPin(db: Db, phone: string, code: string, p
   const [existing] = await db.query<UserRow>(`SELECT * FROM users WHERE phone_hash = $1`, [hash]);
   if (existing) {
     const [u] = await db.query<UserRow>(
-      `UPDATE users SET pin_hash = $2, phone_verified_at = now(), language = COALESCE($3, language), last_seen_at = now()
+      `UPDATE users SET pin_hash = $2, phone_verified_at = now(), language = COALESCE($3, language), age_band = COALESCE($4, age_band), last_seen_at = now()
         WHERE id = $1 RETURNING *`,
-      [existing.id, hashPassword(pin), lang],
+      [existing.id, hashPassword(pin), lang, validAgeBand(ageBand) ? ageBand : null],
     );
     return u;
   }
   let anon = newAnonId();
   while ((await db.query(`SELECT 1 FROM users WHERE anon_id = $1`, [anon])).length) anon = newAnonId();
   const [u] = await db.query<UserRow>(
-    `INSERT INTO users (anon_id, phone_hash, phone_enc, channel, language, state, pin_hash, phone_verified_at) VALUES ($1,$2,$3,'web',$4,$5,$6, now()) RETURNING *`,
-    [anon, hash, encryptPhone(phone), lang ?? "en", JSON.stringify({ step: "free" }), hashPassword(pin)],
+    `INSERT INTO users (anon_id, phone_hash, phone_enc, channel, language, state, pin_hash, phone_verified_at, age_band) VALUES ($1,$2,$3,'web',$4,$5,$6, now(), $7) RETURNING *`,
+    [anon, hash, encryptPhone(phone), lang ?? "en", JSON.stringify({ step: "free" }), hashPassword(pin), validAgeBand(ageBand) ? ageBand : null],
   );
   return u;
 }

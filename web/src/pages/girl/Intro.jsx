@@ -40,6 +40,7 @@ export default function Intro({ onDone }) {
           </li>
         ))}
       </ol>
+      <p className="mb-6 rounded-[20px] bg-blush px-5 py-4 text-[15px] text-rose-ink">{t('web_confidential')}</p>
       <button type="button" className="btn w-full" onClick={done}>
         {t('app_intro_start')}
       </button>

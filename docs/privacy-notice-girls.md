@@ -18,6 +18,10 @@
 
 **Translation.** Your messages are translated into English for your health worker by a computer service ([translation provider]), and their reply is translated back into your language. A person always writes the reply.
 
+**Your age, if you want to say.** We may ask how old you are (under 15, 15 to 17, 18 or older), never your date of birth. You don't have to answer. If you are under 18, your health worker takes extra care to keep you safe.
+
+**What stays private, and when it can't.** What you tell Ubah stays private. But if you or another child may be in danger, a Dada or nurse may need to act to keep you safe. [Describe what happens next, agreed with the protection partner: who is told, and whether she is told first.]
+
 **If you may be in danger, a person is told at once.** This is to keep you safe. [Explain what happens next, as agreed with the protection partner — for example, whether anyone outside Ubah is told, and when.]
 
 **Clinics see only your pass code** and the help you need. Never your name or number.

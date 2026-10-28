@@ -34,7 +34,7 @@ export function authApi(db: Db, opts: { loginLimiter: RequestHandler }): Router 
   // First time on this phone, or a forgotten PIN: the SMS code, then her new PIN.
   r.post("/girl/verify", opts.loginLimiter, async (req, res) => {
     const lang = str(req.body?.language, 5);
-    const u = await verifyCodeAndSetPin(db, str(req.body?.phone, 30), str(req.body?.code, 10), str(req.body?.pin, 10), languageConfig(lang) ? lang : undefined);
+    const u = await verifyCodeAndSetPin(db, str(req.body?.phone, 30), str(req.body?.code, 10), str(req.body?.pin, 10), languageConfig(lang) ? lang : undefined, str(req.body?.ageBand, 10) || undefined);
     if (typeof u === "string") return res.status(u === "bad_code" ? 401 : 400).json({ error: u });
     await createGirlSession(db, res, u.id);
     res.json({ role: "girl", home: HOME.girl, language: u.language });

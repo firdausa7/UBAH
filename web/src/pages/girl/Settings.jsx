@@ -80,6 +80,23 @@ export default function Settings({ me, setMe }) {
         </div>
       </section>
 
+      <section className="rounded-[28px] bg-white p-6 ring-1 ring-hair">
+        <h2 className="mb-4 text-[24px] leading-tight">{t('web_age_q')}</h2>
+        <div className="grid grid-cols-2 gap-2">
+          {['under_15', '15_17', '18_plus', 'not_said'].map((band) => (
+            <button
+              key={band}
+              type="button"
+              aria-pressed={me.ageBand === band}
+              onClick={async () => setMe({ ...me, ageBand: (await api.patch('/me', { ageBand: band })).ageBand })}
+              className={`min-h-11 rounded-2xl border px-3 text-[15px] ${me.ageBand === band ? 'border-accent bg-lavender font-medium text-plum' : 'border-line bg-white text-text hover:border-accent'}`}
+            >
+              {t(`web_age_${band}`)}
+            </button>
+          ))}
+        </div>
+      </section>
+
       <section className="rounded-[28px] bg-blush p-6">
         <h2 className="mb-4 text-[28px] leading-tight">{t('web_share_title')}</h2>
         <Toggle label={t('web_share_messages')} hint={t('web_share_messages_hint')} on={Boolean(me.consents.messages)} onChange={(v) => share('messages', v)} saved={saved === 'messages' && t('web_saved')} />

@@ -370,6 +370,38 @@ describe("USSD (fixes from the code review)", () => {
   });
 });
 
+describe("age (optional) and child safeguarding", () => {
+  it("keeps the age band she gives, and shows her worker 'Under 18' so they follow the procedure", async () => {
+    const phone = "0712600130";
+    const a = request.agent(app);
+    await a.post("/api/auth/girl/code").set(H).send({ phone });
+    await a.post("/api/auth/girl/verify").set(H).send({ phone, code: lastSmsCode("254712600130"), pin: "2580", language: "so", ageBand: "15_17" });
+    await a.put("/api/me/consents").set(H).send({ messages: true });
+    const [u] = await db.query(`SELECT id, age_band FROM users WHERE phone_hash = $1`, [hashPhone(phone)]);
+    expect(u.age_band).toBe("15_17");
+    expect((await a.get("/api/me")).body.ageBand).toBe("15_17");
+    expect((await a.patch("/api/me").set(H).send({ ageBand: "12" })).status).toBe(400);
+
+    await assign(u.id, "nurse");
+    await handleIncoming(db, { channel: "web", from: "", userId: u.id, text: "Caadadaydu way soo daahday" });
+    const nurse = await staff("nurse");
+    const m = (await nurse.get("/api/worker/inbox")).body.messages.find((x: any) => x.girl.id === u.id);
+    expect(m.girl.minor).toBe(true);
+    expect((await nurse.get(`/api/worker/messages/${m.id}`)).body.girl).toMatchObject({ minor: true, ageBand: "15_17" });
+
+    // On the /staff case page too.
+    await a.post("/api/me/messages").set(H).send({ text: "DADA" });
+    const [c] = await db.query(`SELECT id FROM cases WHERE user_id = $1 ORDER BY id DESC LIMIT 1`, [u.id]);
+    const page = (await (await staff("dada")).get(`/staff/cases/${c.id}`)).text;
+    expect(page).toContain("Under 18");
+    expect(page).toContain("child-safeguarding procedure");
+
+    // She can change it, or not say.
+    expect((await a.patch("/api/me").set(H).send({ ageBand: "not_said" })).body).toEqual({ ageBand: "not_said" });
+    expect((await nurse.get(`/api/worker/messages/${m.id}`)).body.girl.minor).toBe(false);
+  });
+});
+
 describe("her right to see her data", () => {
   it("lists everything Ubah keeps about her, and never her phone number, staff names or case notes", async () => {
     const { a: her, user } = await webGirl("0712600120", "so", { messages: true });

@@ -147,6 +147,7 @@ function InboxItem({ m, active, keep }) {
       <div className="mb-1.5 flex flex-wrap items-center gap-2 text-[13px]">
         {m.urgent && <span className="tag bg-urgent text-white">Urgent</span>}
         <span className="font-medium text-plum">Girl {m.girl.anonId}</span>
+        {m.girl.minor && <span className="tag bg-rose text-rose-ink">Under 18</span>}
         <span className="text-muted">
           {m.girl.languageLabel} · {CHANNELS[m.channel] ?? m.channel}
         </span>

@@ -51,6 +51,11 @@ export default function MessageView({ id, back, onChange }) {
           Girl <em>{girl.anonId}</em>
         </h2>
         <p className="text-text">Writes in {girl.languageLabel}. Your reply is sent in this language.</p>
+        {girl.minor && (
+          <p className="mt-3 rounded-2xl bg-blush px-4 py-2 text-[15px] text-rose-ink">
+            <strong className="font-medium">Under 18</strong> (she said {girl.ageBand === 'under_15' ? 'under 15' : '15 to 17'}): follow the child-safeguarding procedure.
+          </p>
+        )}
         {m.urgent && m.urgentReason && <p className="mt-3 rounded-2xl bg-blush px-4 py-2 text-[15px] text-rose-ink">Why urgent: {reason(m.urgentReason)}. She was already sent the urgent help message.</p>}
       </header>
 
