@@ -29,7 +29,7 @@ const QUICK_EXIT_JS = `document.querySelectorAll("[data-quick-exit]").forEach(fu
 });`;
 
 const CSS = `
-:root{--plum:#2E1F3E;--text:#4A3F55;--muted:#5B5066;--cream:#FFF8F3;--white:#FFFFFF;--lavender:#E6DBFA;--blush:#FBE1E7;--line:#D8CAF3;--accent:#6C4ACF;--pink:#F7C6D0;--mist:#E2D6F6}
+:root{--plum:#2E1F3E;--text:#4A3F55;--muted:#5B5066;--cream:#FFF8F3;--white:#FFFFFF;--lavender:#E6DBFA;--blush:#FBE1E7;--line:#D8CAF3;--accent:#623ECC;--pink:#F7C6D0;--mist:#E2D6F6}
 *{box-sizing:border-box}
 html{scroll-behavior:smooth}
 @media (prefers-reduced-motion:reduce){html{scroll-behavior:auto}}
@@ -141,8 +141,7 @@ export function landingPage(lang: string): string {
 <meta name="referrer" content="no-referrer">
 <meta name="theme-color" content="#FFF8F3">
 <link rel="icon" href="/assets/rose.png" type="image/png">
-<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,500;0,600;1,500;1,600&family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,700;1,9..40,400&display=swap" rel="stylesheet">
+<link href="/ui/fonts.css" rel="stylesheet">
 <style>${CSS}</style></head><body>
 ${config.stage === "staging" ? STAGING_BANNER : ""}<div class="exitbar"><span>${L("land_exit_q")}</span><a href="https://www.google.com/search?q=weather+today" data-quick-exit rel="noreferrer">${L("land_exit_now")}</a></div>
 

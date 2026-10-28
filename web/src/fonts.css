@@ -1,0 +1,13 @@
+/* The fonts, bundled with the app (Latin covers Somali, Kiswahili, Afaan Oromoo and English): no
+   request to Google with anyone's address, and they work offline. The React app imports this file;
+   the build also writes it to /ui/fonts.css for the server's own pages (landing, /staff). */
+@import '@fontsource/dm-sans/latin-400.css';
+@import '@fontsource/dm-sans/latin-500.css';
+@import '@fontsource/dm-sans/latin-600.css';
+@import '@fontsource/dm-sans/latin-700.css';
+@import '@fontsource/dm-sans/latin-400-italic.css';
+@import '@fontsource/dm-sans/latin-600-italic.css';
+@import '@fontsource/cormorant-garamond/latin-500.css';
+@import '@fontsource/cormorant-garamond/latin-600.css';
+@import '@fontsource/cormorant-garamond/latin-500-italic.css';
+@import '@fontsource/cormorant-garamond/latin-600-italic.css';

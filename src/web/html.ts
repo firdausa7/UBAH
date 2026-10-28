@@ -14,7 +14,7 @@ export function h1(em: string, rest: string, eyebrow = ""): string {
 
 const CSS = `
 :root{--ink:#2E1F3E;--text:#4A3F55;--muted:#5B5066;--line:#ECE2F5;--line2:#D8CAF3;--bg:#FFF8F3;--card:#fff;--soft:#F5EEF9;
---accent:#6C4ACF;--accent-ink:#fff;--accent-soft:#E6DBFA;--ok:#3B2370;--okbg:#E6DBFA;--warn:#8E1340;--warnbg:#F7C6D0;
+--accent:#623ECC;--accent-ink:#fff;--accent-soft:#E6DBFA;--ok:#3B2370;--okbg:#E6DBFA;--warn:#8E1340;--warnbg:#F7C6D0;
 --pink:#FBE1E7;--pinkink:#6B2A55}
 *{box-sizing:border-box}
 body{margin:0;font:16px/1.5 "DM Sans",system-ui,-apple-system,"Segoe UI",sans-serif;color:var(--text);background:var(--bg);-webkit-font-smoothing:antialiased}
@@ -80,8 +80,7 @@ export const STAGING_BANNER = `<div role="status" style="background:#4A2E8C;colo
 export function page(title: string, body: string, nav = ""): string {
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>${esc(title)} · Ubah</title>
-<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,600&display=swap" rel="stylesheet">
+<link href="/ui/fonts.css" rel="stylesheet">
 <style>${CSS}</style></head><body>
 ${config.stage === "staging" ? STAGING_BANNER : ""}${demoBanner ? DEMO_BANNER : ""}<header class="top"><a class="brand" href="/staff">ubah</a><nav>${nav}</nav></header><main>${body}</main></body></html>`;
 }

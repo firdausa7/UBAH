@@ -1,6 +1,7 @@
 import { StrictMode, Suspense, lazy } from 'react'
 import { createRoot } from 'react-dom/client'
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router'
+import './fonts.css'
 import './index.css'
 import { RequireRole, SessionProvider, Waiting } from './lib/session.jsx'
 import Login from './pages/auth/Login.jsx'

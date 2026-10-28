@@ -3,7 +3,7 @@
 //   never kept: her messages, her passes, anything about her (phones are shared)
 // Served at /me/sw.js with scope /me (the server allows it), so it controls /me and /me/… only.
 
-const VERSION = 'v2'
+const VERSION = 'v3'
 const SHELL = `ubah-me-shell-${VERSION}`
 const PUBLIC = `ubah-me-public-${VERSION}`
 
@@ -50,6 +50,8 @@ self.addEventListener('fetch', (event) => {
   if (request.method !== 'GET' || url.origin !== self.location.origin) return
   if (request.mode === 'navigate' && url.pathname.startsWith('/me')) {
     event.respondWith(networkFirst(request, SHELL, '/me'))
+  } else if (url.pathname === '/ui/fonts.css') {
+    event.respondWith(networkFirst(request, SHELL)) // fixed name: its contents can change
   } else if (url.pathname.startsWith('/ui/')) {
     event.respondWith(cacheFirst(request)) // built files never change (their names do)
   } else if (isPublicData(url.pathname)) {

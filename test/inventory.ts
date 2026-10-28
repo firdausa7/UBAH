@@ -69,6 +69,7 @@ export const INVENTORY = [
   "POST /api/admin/assign-unassigned",
   "DELETE /api/admin/girls/:id/assignment",
   "GET /api/audio/:id",
+  "GET /ui/fonts.css",
   "GET /login",
   "GET /me",
   "GET /me/sw.js",

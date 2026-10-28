@@ -15,7 +15,7 @@
   --color-rose-ink: #6b2a55;
   --color-line: #d8cafa;
   --color-hair: #ece2f5;
-  --color-accent: #6c4acf;
+  --color-accent: #623ecc; /* darkened from #6c4acf to reach 4.5:1 on rose and mist */
   --color-mist: #e2d6f6;
   --color-soft: #f5eef9;
   --color-urgent: #8e1340;

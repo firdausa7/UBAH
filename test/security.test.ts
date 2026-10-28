@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeAll } from "vitest";
+import { existsSync, readdirSync } from "node:fs";
 import request from "supertest";
 import { freshDb, girl, staffClient, csrfFrom, totpFor, lastSmsCode, type StaffClient } from "./helpers.js";
 import { createApp } from "../src/server.js";
@@ -53,6 +54,28 @@ describe("HTTP hardening", () => {
     expect(res.headers["cache-control"]).toBe("no-store");
     expect(res.headers["x-powered-by"]).toBeUndefined();
     expect(res.headers["x-request-id"]).toBeTruthy();
+  });
+
+  it("serves its own fonts (no request to Google with anyone's address) and compresses only the built app", async () => {
+    for (const path of ["/", "/staff/login"]) {
+      const res = await request(app).get(path);
+      expect(res.headers["content-security-policy"], path).not.toMatch(/googleapis|gstatic/);
+      expect(res.text, path).toContain('href="/ui/fonts.css"');
+      expect(res.text, path).not.toMatch(/fonts\.googleapis|fonts\.gstatic/);
+    }
+    if (!existsSync(new URL("../web/dist/ui/fonts.css", import.meta.url))) return; // before the first web build
+    const fonts = await request(app).get("/ui/fonts.css");
+    expect(fonts.status).toBe(200);
+    expect(fonts.headers["cache-control"]).toBe("no-cache"); // fixed name: checked for a newer copy
+    expect(fonts.text).toContain("@font-face");
+    const script = readdirSync(new URL("../web/dist/ui/", import.meta.url)).find((f) => /^index-.*\.js$/.test(f))!;
+    const js = await request(app).get(`/ui/${script}`).set("accept-encoding", "gzip");
+    expect(js.headers["content-encoding"]).toBe("gzip");
+    expect(js.headers["cache-control"]).toContain("immutable");
+    // Pages and API answers can carry someone's data: never compressed (BREACH).
+    for (const path of ["/staff/login", "/api/strings"]) {
+      expect((await request(app).get(path).set("accept-encoding", "gzip")).headers["content-encoding"], path).toBeUndefined();
+    }
   });
 
   it("rejects oversized requests", async () => {

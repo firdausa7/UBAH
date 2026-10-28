@@ -1,4 +1,5 @@
 import express, { type Request, type Response, type NextFunction } from "express";
+import compression from "compression";
 import helmet from "helmet";
 import { createHmac, randomUUID } from "node:crypto";
 import type { Server } from "node:http";
@@ -96,8 +97,8 @@ export function createApp(db: Db, opts: AppOptions = {}) {
         directives: {
           defaultSrc: ["'self'"],
           scriptSrc: ["'self'"],
-          styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
-          fontSrc: ["'self'", "https://fonts.gstatic.com"],
+          styleSrc: ["'self'", "'unsafe-inline'"],
+          fontSrc: ["'self'"],
           imgSrc: ["'self'", "data:"],
           mediaSrc: ["'self'", "blob:"],
           connectSrc: ["'self'"],
@@ -299,8 +300,6 @@ export function createApp(db: Db, opts: AppOptions = {}) {
   // ---- The React app (web/dist): login, girls' space, worker dashboard, admin ----
   // Only these areas belong to it; the landing page, /staff and /app stay server-rendered.
   // Before the first `npm run build` they fall through to the normal 404 page.
-  app.use("/ui", express.static(join(WEB_DIST, "ui"), { immutable: true, maxAge: "365d" }));
-  // The girls' space works offline (public content only) and installs on a phone.
   const webFile = (file: string, type: string, headers: Record<string, string> = {}) => (_req: Request, res: Response, next: NextFunction) => {
     const path = join(WEB_DIST, file);
     if (!existsSync(path)) return next();
@@ -308,6 +307,14 @@ export function createApp(db: Db, opts: AppOptions = {}) {
     for (const [k, v] of Object.entries(headers)) res.setHeader(k, v);
     res.type(type).sendFile(path);
   };
+  // The fonts for every page (the server's pages link it too). Its name never changes, so unlike the
+  // other built files it is checked for a newer copy each time.
+  // Built files are compressed (the app's script is ~315 kB, ~96 kB compressed: it matters on slow
+  // data). Only these: they hold nothing about anyone, so compression can't leak a secret (BREACH).
+  app.use("/ui", compression());
+  app.get("/ui/fonts.css", webFile("ui/fonts.css", "text/css"));
+  app.use("/ui", express.static(join(WEB_DIST, "ui"), { immutable: true, maxAge: "365d" }));
+  // The girls' space works offline (public content only) and installs on a phone.
   // Scope "/me" (not "/me/") so it also covers the page at /me itself.
   app.get("/me/sw.js", webFile("sw.js", "application/javascript", { "Service-Worker-Allowed": "/me" }));
   app.get("/me/manifest.webmanifest", webFile("me.webmanifest", "application/manifest+json"));
