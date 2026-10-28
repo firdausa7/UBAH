@@ -20,8 +20,8 @@ import { config } from "../config.js";
 // her language, with the English the worker wrote available on tap.
 async function conversation(db: Db, girlId: number, after: number) {
   const rows = await db.query<any>(
-    `SELECT m.id, m.direction, m.kind, m.body, m.english_text, m.english_source, m.sent_by_staff, m.created_at, r.voice_ref
-       FROM messages m LEFT JOIN replies r ON r.sent_message_id = m.id
+    `SELECT m.id, m.direction, m.kind, m.body, m.english_text, m.english_source, m.sent_by_staff, m.created_at, r.voice_ref, st.role AS staff_role
+       FROM messages m LEFT JOIN replies r ON r.sent_message_id = m.id LEFT JOIN staff st ON st.id = m.sent_by_staff
       WHERE m.user_id = $1 AND m.id > $2 AND m.kind <> 'location' ORDER BY m.id LIMIT 200`,
     [girlId, after],
   );
@@ -29,7 +29,7 @@ async function conversation(db: Db, girlId: number, after: number) {
   const unseen = rows.filter((m) => m.direction === "out" && m.sent_by_staff).map((m) => m.id);
   if (unseen.length) await db.query(`UPDATE messages SET read_at = now() WHERE id = ANY($1::int[]) AND read_at IS NULL`, [unseen]);
   return rows.map((m) => {
-    const from = m.direction === "in" ? "me" : m.sent_by_staff ? "worker" : "ubah";
+    const from = m.direction === "in" ? "me" : m.staff_role === "protection" ? "protection" : m.sent_by_staff ? "worker" : "ubah";
     // Ubah's numbered menus ("1 Find a clinic…") become buttons, as on WhatsApp. A worker's own
     // words are never read as a menu.
     const menu = from === "ubah" ? parseMenu(m.body) : { body: m.body, options: [] };

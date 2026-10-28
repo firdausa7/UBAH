@@ -383,6 +383,7 @@ export const en: Strings = {
   rp_send: "Send my report",
   rp_received: "Thank you for telling us. Your report was received. Only trained protection staff can read it. It is not your fault.",
   rp_mine: "My reports",
+  rp_from: "A protection worker",
   rp_status_received: "Received",
   rp_status_being_looked_at: "Being looked at",
   rp_status_closed: "Closed",

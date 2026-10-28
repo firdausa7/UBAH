@@ -93,6 +93,7 @@ export const INVENTORY = [
   "POST /staff/safeguarding/:id/referral",
   "POST /staff/safeguarding/:id/follow-up",
   "POST /staff/safeguarding/:id/note",
+  "POST /staff/safeguarding/:id/message",
   "GET /staff/admin",
   "GET /staff/admin/clinics",
   "GET /staff/admin/clinics/:id",

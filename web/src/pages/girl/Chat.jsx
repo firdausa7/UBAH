@@ -204,10 +204,10 @@ function Bubble({ m, onOption, busy }) {
         <span className="whitespace-pre-line">{m.text}</span>
       </li>
     )
-  if (m.from === 'worker')
+  if (m.from === 'worker' || m.from === 'protection')
     return (
       <li className="max-w-[88%] self-start rounded-[20px_20px_20px_4px] bg-blush px-4 py-3 text-[16px] text-plum">
-        <span className="mb-1 block text-[13px] font-medium text-rose-ink">{t('web_from_worker')}</span>
+        <span className="mb-1 block text-[13px] font-medium text-rose-ink">{m.from === 'protection' ? t('rp_from') : t('web_from_worker')}</span>
         <span className="whitespace-pre-line" lang={english ? 'en' : undefined}>
           {english && m.english ? m.english : m.text}
         </span>

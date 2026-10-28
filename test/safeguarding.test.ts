@@ -152,3 +152,33 @@ describe("monitoring confidential reports", () => {
     expect(after.reportFollowUpsDue).toBe(before.reportFollowUpsDue + 1);
   });
 });
+
+describe("a protection officer writing to her", () => {
+  it("only if she agreed; translated with a preview first; labelled 'A protection worker' in her chat", async () => {
+    const officer = await staffClient(app, db, "protection");
+    const phone = "0712960300";
+    const a = request.agent(app);
+    await a.post("/api/auth/girl/code").set(H).send({ phone });
+    await a.post("/api/auth/girl/verify").set(H).send({ phone, code: lastSmsCode("254712960300"), pin: "2580", language: "so" });
+    const no = (await a.post("/api/me/report").set(H).send({ category: "harassment", contactOk: false })).body.id;
+    const yes = (await a.post("/api/me/report").set(H).send({ category: "harassment", contactOk: true })).body.id;
+
+    expect((await officer.get(`/staff/safeguarding/${no}`)).text).toContain("She did not agree to be contacted");
+    expect((await officer.post(`/staff/safeguarding/${no}/message`, { body: "Hello" })).headers.location).toMatch(/error=invalid/);
+
+    const preview = await officer.post(`/staff/safeguarding/${yes}/message`, { body: "Thank you for telling us. Are you safe now?", translate: "1" });
+    expect(preview.text).toContain("[en→so] Thank you for telling us. Are you safe now?");
+    const before = (await a.get("/api/me/messages")).body.messages.length;
+    expect((await a.get("/api/me/messages")).body.messages.length).toBe(before); // nothing sent at the preview
+    await officer.post(`/staff/safeguarding/${yes}/message`, {
+      body: "Thank you for telling us. Are you safe now?",
+      translate: "1",
+      confirm: "1",
+      translated: "[en→so] Thank you for telling us. Are you safe now?",
+      source: "machine",
+    });
+    const last = (await a.get("/api/me/messages")).body.messages.at(-1);
+    expect(last).toMatchObject({ from: "protection", text: "[en→so] Thank you for telling us. Are you safe now?", english: "Thank you for telling us. Are you safe now?" });
+    expect((await db.query(`SELECT 1 FROM safeguarding_events WHERE report_id = $1 AND kind = 'message'`, [yes])).length).toBe(1);
+  });
+});

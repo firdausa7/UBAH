@@ -8,6 +8,8 @@ import { decrypt, encrypt, NEXT, STATUSES, type Status } from "../safeguarding.j
 import { requireRole, staffOf } from "./auth.js";
 import { esc, h1, notice, page, select, textarea, when } from "./html.js";
 import { nav } from "./nav.js";
+import { sendToUser, type UserRow } from "../channels/outbound.js";
+import { chooseTranslation, type ReplySource } from "../replies.js";
 
 // Confidential reports: protection officers only (not nurses, Dadas or admins), apart from the
 // ordinary inbox. Every look goes in the access log, every step in the report's history (with a
@@ -112,6 +114,9 @@ ${rep.assigned_to ? "" : `<form method="post" action="/staff/safeguarding/${rep.
 ${next.length ? form("status", `<h2>Change status</h2>${select("New status", "to", next.map((s) => [s, STATUS[s]]), next[0], { required: true })}${textarea("Why (required: it goes in the report's history)", "note", "", { rows: 2, required: true })}`, "Save status") : ""}
 ${form("referral", `<h2>Refer</h2>${contacts.length ? select("Verified contact", "contact_id", contacts.map((c) => [String(c.id), `${c.name}${c.organisation ? `, ${c.organisation}` : ""}${c.service ? ` (${c.service})` : ""}`]), "", { required: true }) : `<p class="muted">No verified referral contacts${rep.site_id ? " for her site" : ""} yet. An admin adds and verifies them under Admin → Sites.</p>`}${textarea("Note (what was agreed, with whom)", "note", "", { rows: 2, required: true })}`, "Record referral")}
 ${form("follow-up", `<h2>Follow up</h2><label for="at">Follow up on</label><input id="at" name="at" type="date" required${rep.follow_up_at ? ` value="${new Date(rep.follow_up_at).toISOString().slice(0, 10)}"` : ""}>`, "Set follow-up date")}
+${rep.contact_ok
+  ? form("message", `<h2>Write to her</h2><p class="muted">She said a protection worker may reply to her in Ubah. It appears in her conversation as "A protection worker". Never ask her to reply if it may put her at risk.</p>${textarea("Message", "body", "", { rows: 3, required: true })}${rep.language && rep.language !== "en" ? `<label class="inline"><input type="checkbox" name="translate" value="1"> I wrote in English: translate it into ${esc(workerLabel(rep.language))} for her (you'll see it before it is sent)</label>` : ""}`, "Send to her")
+  : `<div class="card"><h2>Write to her</h2><p class="muted">She did not agree to be contacted in Ubah. Use the referral and her Dada instead, as your procedure says.</p></div>`}
 ${form("note", `<h2>Add a note</h2><p class="muted">Only protection officers can read notes. Never write her name or phone number.</p>${textarea("Note", "note", "", { rows: 3, required: true })}`, "Add note")}
 <div class="card"><h2>History</h2><ul class="timeline">${events.map(describe).join("")}</ul></div>`,
         nav(req),
@@ -164,6 +169,47 @@ ${form("note", `<h2>Add a note</h2><p class="muted">Only protection officers can
     await db.query(`UPDATE safeguarding_reports SET follow_up_at = $2, updated_at = now() WHERE id = $1`, [rep.id, at]);
     await db.query(`INSERT INTO safeguarding_events (report_id, staff_id, kind, note_enc) VALUES ($1,$2,'note',$3)`, [rep.id, staffOf(req).id, encrypt(`Follow-up set for ${at.toISOString().slice(0, 10)}`)]);
     await auditReq(db, req, { action: "report.follow_up", targetType: "report", targetId: rep.id });
+  });
+
+  // A message to her, only if she agreed. Written in English for a girl who reads another language:
+  // shown translated first, sent only once the officer confirms (as in the /staff case reply).
+  r.post("/safeguarding/:id/message", officers, async (req, res) => {
+    const rep = await load(req, res);
+    if (!rep) return;
+    if (!rep.contact_ok) return res.redirect(`/staff/safeguarding/${rep.id}?error=invalid`);
+    const body = String(req.body.body ?? "").trim().slice(0, 1600);
+    if (!body) return res.redirect(`/staff/safeguarding/${rep.id}?error=invalid`);
+    const [user] = await db.query<UserRow>(`SELECT * FROM users WHERE id = $1`, [rep.user_id]);
+    let outgoing = body;
+    let english: { text: string; source: ReplySource } | null = null;
+    if (req.body.translate && user.language && user.language !== "en") {
+      if (!req.body.confirm) {
+        const t = await chooseTranslation(db, user.language, body);
+        if (!t.ok) return res.send(page("Not translated", `<div class="card"><h1><em>Not</em> translated</h1><p>The translation service didn't answer, so nothing was sent.</p><p><a href="/staff/safeguarding/${rep.id}">← Back to the report</a></p></div>`, nav(req)));
+        const hidden = (n: string, v: string) => `<input type="hidden" name="${n}" value="${esc(v)}">`;
+        return res.send(
+          page(
+            "Check the translation",
+            `<div class="card"><h1>Check <em>before sending</em></h1><p class="muted">You wrote</p><div class="bubble out" style="max-width:100%">${esc(body)}</div>
+<p class="muted">She will receive</p><div class="bubble in" style="max-width:100%">${esc(t.text)}</div>
+<p>${t.source === "template" ? `<span class="tag ok">Checked translation</span>` : `<span class="tag urgent">Machine translated: check the meaning</span>`}</p>
+<form method="post" action="/staff/safeguarding/${rep.id}/message">${csrfField(req)}${hidden("body", body)}${hidden("translate", "1")}${hidden("confirm", "1")}${hidden("translated", t.text)}${hidden("source", t.source)}<p><button class="accent">Send this to her</button></p></form>
+<p><a href="/staff/safeguarding/${rep.id}">← Back to the report (nothing was sent)</a></p></div>`,
+            nav(req),
+          ),
+        );
+      }
+      const source = String(req.body.source ?? "");
+      outgoing = String(req.body.translated ?? "").trim().slice(0, 2000);
+      if (!outgoing || !["template", "machine"].includes(source)) return res.redirect(`/staff/safeguarding/${rep.id}?error=invalid`);
+      english = { text: body, source: source as ReplySource };
+    }
+    const me = staffOf(req);
+    // Into her app conversation (the report came from the app).
+    const messageId = await sendToUser(db, { ...user, channel: "web" }, outgoing, null, me.id, english ? { englishText: english.text, englishSource: english.source } : {});
+    await db.query(`INSERT INTO safeguarding_events (report_id, staff_id, kind, note_enc) VALUES ($1,$2,'message',$3)`, [rep.id, me.id, encrypt(english ? english.text : outgoing)]);
+    await auditReq(db, req, { action: "report.message", targetType: "report", targetId: rep.id, details: { messageId } });
+    res.redirect(`/staff/safeguarding/${rep.id}?done=sent`);
   });
 
   action("note", async (req, rep) => {
