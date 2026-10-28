@@ -93,6 +93,10 @@ export default function Settings({ me, setMe }) {
         </section>
       )}
 
+      <Link to="/me/data" className="btn-ghost self-center">
+        {t('web_data')}
+      </Link>
+
       <Link to="/me/intro" className="btn-quiet self-center">
         {t('app_intro_title')}
       </Link>

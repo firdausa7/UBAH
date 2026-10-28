@@ -70,6 +70,38 @@ export function meApi(db: Db): Router {
     res.json({ language: l.code });
   });
 
+  // Her right to see her data: everything Ubah keeps about her (never her phone number in clear,
+  // and never staff names or notes about her case).
+  r.get("/data", async (req, res) => {
+    const g = girlOf(req);
+    const [u] = await db.query<any>(`SELECT anon_id, language, channel, created_at FROM users WHERE id = $1`, [g.id]);
+    const [worker] = await db.query<{ role: string }>(
+      `SELECT s.role FROM assignments a JOIN staff s ON s.id = a.health_worker_id WHERE a.girl_id = $1 AND a.ended_at IS NULL AND s.active`,
+      [g.id],
+    );
+    const messages = await db.query<any>(
+      `SELECT direction, kind, body, english_text, sent_by_staff, created_at FROM messages WHERE user_id = $1 AND kind <> 'location' ORDER BY id`,
+      [g.id],
+    );
+    const passes = await passesFor(db, g.id);
+    const [voice] = await db.query<{ n: number }>(`SELECT count(*)::int AS n FROM voice_notes WHERE user_id = $1`, [g.id]);
+    const [devices] = await db.query<{ n: number }>(`SELECT count(*)::int AS n FROM push_subscriptions WHERE user_id = $1`, [g.id]);
+    res.json({
+      account: { code: u.anon_id, language: u.language, channel: u.channel, joined: u.created_at, phone: "locked" },
+      sharing: await consents(db, g.id),
+      healthWorker: worker ? worker.role : null,
+      counts: { messages: messages.length, passes: passes.length, voiceRecordings: voice.n, notificationDevices: devices.n },
+      messages: messages.map((m) => ({
+        at: m.created_at,
+        from: m.direction === "in" ? "me" : m.sent_by_staff ? "health worker" : "Ubah",
+        kind: m.kind,
+        text: m.body,
+        ...(m.direction === "out" && m.sent_by_staff && m.english_text ? { english: m.english_text } : {}),
+      })),
+      passes,
+    });
+  });
+
   // "Wipe my history": deletes her account and everything Ubah holds about her, and signs her out.
   r.delete("/", async (req, res) => {
     await eraseGirl(db, girlOf(req));

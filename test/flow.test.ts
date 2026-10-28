@@ -370,6 +370,35 @@ describe("USSD (fixes from the code review)", () => {
   });
 });
 
+describe("her right to see her data", () => {
+  it("lists everything Ubah keeps about her, and never her phone number, staff names or case notes", async () => {
+    const { a: her, user } = await webGirl("0712600120", "so", { messages: true });
+    await assign(user.id, "nurse");
+    await handleIncoming(db, { channel: "web", from: "", userId: user.id, text: "Caadadaydu way soo daahday" });
+    await her.post("/api/me/passes").set(H).send({ services: ["period_care"] });
+    const nurse = await staff("nurse");
+    const m = (await nurse.get("/api/worker/inbox")).body.messages.find((x: any) => x.girl.id === user.id);
+    await nurse.post(`/api/worker/messages/${m.id}/reply`).set(H).send({ english: "Please visit the clinic." });
+    await db.query(`INSERT INTO cases (user_id, reason, urgent, summary) VALUES ($1,'asked_for_person',FALSE,'internal')`, [user.id]);
+    const [c] = await db.query(`SELECT id FROM cases WHERE user_id = $1 LIMIT 1`, [user.id]);
+    const [st] = await db.query(`SELECT id, name FROM staff WHERE login = 'nurse'`);
+    await db.query(`INSERT INTO case_notes (case_id, staff_id, body) VALUES ($1,$2,'A private note for the care team')`, [c.id, st.id]);
+
+    const d = (await her.get("/api/me/data")).body;
+    expect(d.account).toMatchObject({ code: user.anon_id, language: "so", phone: "locked" });
+    expect(d.sharing).toEqual({ messages: true, voice: false });
+    expect(d.healthWorker).toBe("nurse");
+    expect(d.counts.passes).toBe(1);
+    expect(d.messages.some((x: any) => x.from === "me" && x.text === "Caadadaydu way soo daahday")).toBe(true);
+    expect(d.messages.find((x: any) => x.from === "health worker")).toMatchObject({ english: "Please visit the clinic." });
+    const all = JSON.stringify(d);
+    expect(all).not.toContain("712600120"); // no phone number in any form
+    expect(all).not.toContain(st.name);
+    expect(all).not.toContain("A private note");
+    expect((await request(app).get("/api/me/data")).status).toBe(401);
+  });
+});
+
 describe("wipe my history", () => {
   it("deletes her account and everything linked to it, and signs her out", async () => {
     const { a: her, user } = await webGirl("0712600090", "so", { messages: true, voice: true });

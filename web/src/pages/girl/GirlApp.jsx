@@ -3,6 +3,7 @@ import { Link, NavLink, Route, Routes } from 'react-router'
 import { api, ApiError } from '../../lib/api.js'
 import LockScreen from './LockScreen.jsx'
 import Intro, { introSeen } from './Intro.jsx'
+import MyData from './MyData.jsx'
 import { Waiting } from '../../lib/session.jsx'
 import { StringsProvider, savedLanguage, useStrings } from '../../lib/strings.jsx'
 import { registerOffline } from '../../lib/offline.js'
@@ -54,6 +55,7 @@ export default function GirlApp() {
           <Route path="passes" element={<Passes />} />
           <Route path="learn" element={<Learn />} />
           <Route path="settings" element={<Settings me={me} setMe={setMe} />} />
+          <Route path="data" element={<MyData />} />
         </Routes>
       </Shell>
     </StringsProvider>
