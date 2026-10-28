@@ -1,4 +1,5 @@
 import type { Db } from "../db.js";
+import { applyRetention } from "../retention.js";
 import { purgeVoiceNotes } from "../voice/store.js";
 import { config } from "../config.js";
 import { sendCheckin, sendDueCheckins } from "../engine.js";
@@ -96,4 +97,6 @@ export async function housekeeping(db: Db): Promise<void> {
   await db.query(`DELETE FROM pin_attempts WHERE updated_at < now() - interval '1 day'`);
   // Girls' voice notes: 30 days at most, gone as soon as the message is resolved.
   await purgeVoiceNotes(db);
+  // Retention periods set by the team (off by default).
+  await applyRetention(db);
 }

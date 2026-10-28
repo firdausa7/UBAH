@@ -176,6 +176,7 @@ Tick every line before the first real girl. Keep the ticked copy, with names and
 - [ ] Danger-word lists (`data/danger/`) checked and extended by nurses and native speakers, per language
 - [ ] `npm run eval:languages` per language: **no urgent message missed**; each language set to `enabled` or `beta` in `src/languages/<lang>.ts` from its report, and a disabled language never shown
 - [ ] Answer templates for common replies translated and checked (they replace machine translation)
+- [ ] Retention periods decided with the legal adviser and recorded in the DPIA; `RETENTION_MODE=report` for a week (check the numbers in the log or with `npm run retention`), then `delete`
 
 **People and access**
 - [ ] Staff accounts created (one per person, never shared), each with two-step login set up; test logins and demo data removed

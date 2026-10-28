@@ -59,6 +59,10 @@ const EnvSchema = z.object({
   GOOGLE_TRANSLATE_BASE_URL: z.string().default("https://translation.googleapis.com"),
   // Spoken replies (ElevenLabs): off unless switched on, and only for languages with an approved voice.
   VOICE_REPLIES: bool(false),
+  // Retention (src/retention.ts): off until the team sets periods with their legal adviser.
+  RETENTION_MODE: z.enum(["off", "report", "delete"], { message: "off, report or delete" }).default("off"),
+  RETENTION_INACTIVE_DAYS: z.coerce.number({ message: "must be a number of days" }).int().min(30).optional(),
+  RETENTION_MESSAGE_DAYS: z.coerce.number({ message: "must be a number of days" }).int().min(30).optional(),
   // Web push for the girls' space (npm run vapid-keys). Without them, no push.
   VAPID_PUBLIC_KEY: z.string().default(""),
   VAPID_PRIVATE_KEY: z.string().default(""),
@@ -220,6 +224,7 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     stt: { baseUrl: e.STT_BASE_URL ?? e.LLM_BASE_URL, apiKey: e.STT_API_KEY ?? e.LLM_API_KEY, model: e.STT_MODEL, minConfidence: e.STT_MIN_CONFIDENCE, perLanguage: perLanguageStt.values,
       google: { credentialsPath: e.STT_GOOGLE_CREDENTIALS ?? "", credentialsJson: e.STT_GOOGLE_CREDENTIALS_JSON ?? "", location: e.STT_GOOGLE_LOCATION ?? "", model: e.STT_GOOGLE_MODEL } },
     translate: { apiKey: e.GOOGLE_TRANSLATE_API_KEY, baseUrl: e.GOOGLE_TRANSLATE_BASE_URL },
+    retention: { mode: e.RETENTION_MODE, inactiveDays: e.RETENTION_INACTIVE_DAYS ?? null, messageDays: e.RETENTION_MESSAGE_DAYS ?? null },
     push: { publicKey: e.VAPID_PUBLIC_KEY, privateKey: e.VAPID_PRIVATE_KEY, subject: e.VAPID_SUBJECT },
     voiceReplies: { enabled: e.VOICE_REPLIES, apiKey: e.ELEVENLABS_API_KEY, baseUrl: e.ELEVENLABS_BASE_URL, model: e.ELEVENLABS_MODEL },
 
@@ -289,6 +294,11 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     demoMode: e.DEMO_MODE,
     jobs: { enabled: e.JOBS_ENABLED, pollMs: e.JOB_POLL_MS, checkinSweepMinutes: e.CHECKIN_SWEEP_MINUTES },
   };
+
+  // Deleting needs a period: "delete" with none set would do nothing while looking switched on.
+  if (cfg.retention.mode === "delete" && !cfg.retention.inactiveDays && !cfg.retention.messageDays) {
+    throw new ConfigError(["RETENTION_MODE is delete but neither RETENTION_INACTIVE_DAYS nor RETENTION_MESSAGE_DAYS is set"]);
+  }
 
   // Refuse to run a real pilot with demo secrets, unapproved content or no one to alert.
   if (production) {

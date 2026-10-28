@@ -22,6 +22,7 @@
     "eval:languages": "tsx --env-file-if-exists=.env scripts/eval-languages.ts",
     "translations": "tsx --env-file-if-exists=.env scripts/translations.ts",
     "vapid-keys": "tsx scripts/vapid-keys.ts",
+    "retention": "tsx --env-file-if-exists=.env scripts/retention.ts",
     "demo": "tsx src/demoCli.ts",
     "loadtest": "tsx src/tools/loadtest.ts"
   },

@@ -47,7 +47,7 @@ Ubah processes **health data** (sexual and reproductive health questions) and da
 - Processors: [translation provider, e.g. Google Cloud Translation] receives the text of girls' messages and workers' replies; [speech-to-text provider] receives voice audio. [Record where each processes data, and the data processing agreements.]
 - Accuracy: answers only from content approved by a named health-partner reviewer.
 - Purpose limitation: data is not used for marketing or shared with third parties beyond the processors listed. [Confirm data-sharing agreements with partners: what aggregate reports they receive.]
-- Retention: [define and implement a deletion schedule; Ubah currently keeps data until DELETE].
+- Retention: [decide the periods with your legal adviser]. Ubah applies them automatically once set: `RETENTION_INACTIVE_DAYS` (a girl's whole account after that long without activity) and `RETENTION_MESSAGE_DAYS` (older messages; the account stays), with `RETENTION_MODE=report` first (logs what would be deleted) and then `delete`. Girls with an open case are never touched. Already automatic: voice recordings (resolved, or 30 days), login codes (1 day), ended sessions. Audit and access logs are kept as the accountability record: [decide their period]. Girls can delete everything at any time (DELETE, Wipe my history).
 
 ## 5. Data subjects' rights
 | Right | How Ubah supports it |
