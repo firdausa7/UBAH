@@ -129,6 +129,8 @@ npm start
 
 ## How it is built
 
+The map of the code (components, a message end to end, who sees what, where data lives and what is encrypted, outside services, security controls): `docs/architecture.md`. Accessibility checks and download sizes on slow networks: `docs/accessibility.md`.
+
 - **Database migrations** — numbered files in `migrations/` (`0001_initial.sql`, `0002_…`). Each runs once, in its own transaction, under a Postgres advisory lock, so two instances starting together are safe. Applied files are checksummed: editing one stops the app; add a new numbered file instead. `npm run migrate -- --status` lists them.
 - **One repository, one build** — the server is in `src/`; the React app (login, girls' space `/me`, worker dashboard `/worker`, admin `/admin`) is in `web/` (Vite, React, Tailwind). `npm run build` builds `web/` into `web/dist` and type-checks the server; the server then serves the React app at those paths only, with its files under `/ui/`. The landing page (`/`), `/staff` and `/app` stay server-rendered. For frontend work run `npm run dev` here and `npm --prefix web run dev` (Vite proxies `/api` to port 3000).
 - **Languages** — one config per language in `src/languages/` (display name, speech-to-text and translation codes and providers, voice, danger-word list, status `enabled` | `beta` | `disabled`, `reviewedBy`). A disabled language is never offered; "Beta" is shown to workers only.
