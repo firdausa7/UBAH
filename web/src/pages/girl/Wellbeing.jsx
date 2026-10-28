@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useNavigate } from 'react-router'
+import { Link, useNavigate } from 'react-router'
 import { api } from '../../lib/api.js'
 import { useStrings } from '../../lib/strings.jsx'
 
@@ -118,6 +118,9 @@ export default function Wellbeing() {
           <button type="button" className="btn-ghost" aria-expanded={helpOpen} onClick={() => setHelpOpen(!helpOpen)}>
             {t('wb_help_now')}
           </button>
+          <Link to="/me/report" className="btn-quiet justify-center">
+            {t('rp_open')}
+          </Link>
         </div>
         {helpOpen && !helpSent && (
           <div className="mt-3 flex flex-col gap-2" role="group" aria-label={t('wb_help_now')}>

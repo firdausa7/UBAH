@@ -27,7 +27,7 @@ export function apiRouter(db: Db, opts: { loginLimiter: RequestHandler }): Route
     const l = languageConfig(asked);
     const lang = l && l.status !== "disabled" ? l.code : "en";
     // Her space reuses the app's words for care, passes and lessons (app_, svc_, cat_).
-    const keys = Object.keys(en).filter((k) => /^(web_|app_|svc_|cat_|wb_)/.test(k) || ["clinic_rating", "translation_pending", "answer_not_advice"].includes(k));
+    const keys = Object.keys(en).filter((k) => /^(web_|app_|svc_|cat_|wb_|rp_)/.test(k) || ["clinic_rating", "translation_pending", "answer_not_advice"].includes(k));
     res.setHeader("Cache-Control", "no-cache");
     res.json({ lang, languages: girlLanguages().map((x) => ({ code: x.code, name: x.name })), strings: Object.fromEntries(keys.map((k) => [k, rawString(lang, k)])) });
   });

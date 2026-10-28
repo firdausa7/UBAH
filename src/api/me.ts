@@ -12,6 +12,8 @@ import { pushEnabled, subscribe, unsubscribe, validEndpoint } from "../push.js";
 import { validAgeBand } from "../auth/girls.js";
 import { addEntry, deleteEntry, entriesOf } from "../wellbeing.js";
 import { URGENT_KINDS, urgentHelp, type UrgentKind } from "../urgentHelp.js";
+import { createReport, reportsOf, validReport, decrypt } from "../safeguarding.js";
+import { say } from "../engine.js";
 import { config } from "../config.js";
 
 // Her conversation as she sees it: her messages, Ubah's answers, and her health worker's replies in
@@ -107,6 +109,23 @@ export function meApi(db: Db): Router {
     res.json({ messages: await conversation(db, g.id, Math.max(0, Number(req.query.after) || 0)) });
   });
 
+  // ---- Confidential reports (only protection officers can read them) ----
+  r.post("/report", sendLimit, async (req, res) => {
+    const g = girlOf(req);
+    const input = validReport(req.body);
+    if (!input) return res.status(400).json({ error: "report" });
+    const id = await createReport(db, g.id, g.language, input);
+    const web = { ...g, channel: "web" };
+    // In danger now: a person at once, through the urgent path (without her report's words).
+    if (input.inDanger) await urgentHelp(db, web, "safety", "web");
+    await say(db, web, "rp_received");
+    res.status(201).json({ id, messages: await conversation(db, g.id, Math.max(0, Number(req.query.after) || 0)) });
+  });
+
+  r.get("/reports", async (req, res) => {
+    res.json({ reports: await reportsOf(db, girlOf(req).id) });
+  });
+
   // Her right to see her data: everything Ubah keeps about her (never her phone number in clear,
   // and never staff names or notes about her case).
   r.get("/data", async (req, res) => {
@@ -124,6 +143,16 @@ export function meApi(db: Db): Router {
     const [voice] = await db.query<{ n: number }>(`SELECT count(*)::int AS n FROM voice_notes WHERE user_id = $1`, [g.id]);
     const [devices] = await db.query<{ n: number }>(`SELECT count(*)::int AS n FROM push_subscriptions WHERE user_id = $1`, [g.id]);
     const wellbeing = await entriesOf(db, g.id, 10_000);
+    const reports = (await db.query<any>(`SELECT category, in_danger, who, happened, description_enc, contact_ok, status, created_at FROM safeguarding_reports WHERE user_id = $1 ORDER BY id`, [g.id])).map((r) => ({
+      at: r.created_at,
+      category: r.category,
+      inDanger: r.in_danger,
+      who: r.who,
+      happened: r.happened,
+      description: decrypt(r.description_enc),
+      contactOk: r.contact_ok,
+      status: r.status,
+    }));
     res.json({
       account: { code: u.anon_id, language: u.language, ageBand: u.age_band ?? null, channel: u.channel, joined: u.created_at, phone: "locked" },
       sharing: await consents(db, g.id),
@@ -138,6 +167,7 @@ export function meApi(db: Db): Router {
       })),
       passes,
       wellbeing,
+      reports, // what she sent, never staff notes about it
     });
   });
 

@@ -5,6 +5,7 @@ import LockScreen from './LockScreen.jsx'
 import Intro, { introSeen } from './Intro.jsx'
 import MyData from './MyData.jsx'
 import Wellbeing from './Wellbeing.jsx'
+import Report from './Report.jsx'
 import { Waiting } from '../../lib/session.jsx'
 import { StringsProvider, savedLanguage, useStrings } from '../../lib/strings.jsx'
 import { registerOffline } from '../../lib/offline.js'
@@ -58,6 +59,7 @@ export default function GirlApp() {
           <Route path="settings" element={<Settings me={me} setMe={setMe} />} />
           <Route path="data" element={<MyData />} />
           <Route path="wellbeing" element={<Wellbeing />} />
+          <Route path="report" element={<Report />} />
         </Routes>
       </Shell>
     </StringsProvider>

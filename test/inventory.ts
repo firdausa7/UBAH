@@ -46,6 +46,8 @@ export const INVENTORY = [
   "POST /api/me/wellbeing",
   "DELETE /api/me/wellbeing/:id",
   "POST /api/me/urgent",
+  "POST /api/me/report",
+  "GET /api/me/reports",
   "GET /api/me/clinics",
   "POST /api/me/passes",
   "GET /api/me/passes",
