@@ -1,5 +1,5 @@
 {
-  "name": "ubah-app",
+  "name": "ubah-web",
   "private": true,
   "version": "0.0.0",
   "type": "module",
@@ -11,19 +11,20 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@tailwindcss/vite": "^4.3.3",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
-    "react-router": "^7.18.4",
-    "tailwindcss": "^4.3.3"
+    "react-router": "^7.18.4"
   },
   "devDependencies": {
+    "@tailwindcss/vite": "^4.3.3",
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.7",
     "@vitejs/plugin-react": "^6.1.1",
     "jsdom": "^26.1.0",
     "oxlint": "^1.81.0",
+    "tailwindcss": "^4.3.3",
     "vite": "^8.3.0",
     "vitest": "^5.0.5"
-  }
+  },
+  "license": "Apache-2.0"
 }

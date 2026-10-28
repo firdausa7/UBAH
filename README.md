@@ -435,7 +435,7 @@ Every demo record is marked and labelled `[DEMO]`, staff pages and the monthly P
 
 ## Licences
 
-- Code: Apache License 2.0 (add the full licence text with GitHub's "Add file → LICENSE" template).
+- Code: Apache License 2.0 is the declared intention; the licence file is added once the copyright owner is confirmed. See `docs/open-source-readiness.md` (secrets, contributors and every dependency's licence checked) and `SECURITY.md`.
 - Health content (`content/`), glossary and evaluation data (`data/`): Creative Commons Attribution 4.0 (CC BY 4.0).
 
 ## Author
