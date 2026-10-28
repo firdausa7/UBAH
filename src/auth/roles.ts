@@ -94,6 +94,10 @@ export async function unlockGirlSession(db: Db, tokenHash: string) {
 export async function readActor(db: Db, req: Request): Promise<Actor | null> {
   const s = await readSession(db, req);
   if (s && s.session.mfa_passed && !s.staff.must_change_password) return { role: appRoleOf(s.staff.role) as Exclude<AppRole, "girl">, staff: s.staff };
+  return girlActor(db, req);
+}
+
+export async function girlActor(db: Db, req: Request): Promise<Actor | null> {
   const g = await readGirlSession(db, req);
   return g ? { role: "girl", girl: g.user, locked: g.locked } : null;
 }
@@ -101,7 +105,8 @@ export async function readActor(db: Db, req: Request): Promise<Actor | null> {
 // Server-side guard for every /api/me, /api/worker and /api/admin route. The React guards are only for comfort.
 export function requireRole(db: Db, roles: AppRole[]) {
   return async (req: Request, res: Response, next: NextFunction) => {
-    const actor = await readActor(db, req);
+    // A shared phone can hold a staff and a girl sign-in at once: the girls' routes use hers.
+    const actor = (roles.includes("girl") && (await girlActor(db, req))) || (await readActor(db, req));
     if (!actor) return res.status(401).json({ error: "not_signed_in" });
     if (!roles.includes(actor.role)) return res.status(403).json({ error: "forbidden" });
     // A locked session gets nothing until her PIN is entered (POST /api/auth/girl/unlock).

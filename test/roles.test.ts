@@ -180,6 +180,20 @@ describe("every API area checks the role on the server", () => {
     expect((await (await staff("editor")).get("/api/worker/girls")).status).toBe(403);
   });
 
+  it("on a shared phone with a staff and a girl sign-in, each area uses the right one", async () => {
+    const nurse = await staff("nurse");
+    expect((await post(nurse, "/api/auth/girl/code", { phone: "0712555012" })).status).toBe(200);
+    expect((await post(nurse, "/api/auth/girl/verify", { phone: "0712555012", code: lastSmsCode("254712555012"), pin: "2580", language: "en" })).status).toBe(200);
+    const me = await nurse.get("/api/me");
+    expect(me.status).toBe(200);
+    const [u] = await db.query(`SELECT anon_id FROM users WHERE phone_hash = $1`, [hashPhone("0712555012")]);
+    expect(me.body.anonId).toBe(u.anon_id); // her own space, not the nurse's
+    expect((await post(nurse, "/api/me/messages", { text: "hello" })).status).toBe(200);
+    expect((await nurse.get("/api/worker/girls")).status).toBe(200); // the nurse's work still opens
+    expect((await nurse.get("/api/admin/girls")).status).toBe(403);
+    expect((await nurse.get("/api/auth/session")).body).toMatchObject({ role: "health_worker", also: ["girl"] });
+  });
+
   it("refuses a change without the X-Ubah header (another site can't send it)", async () => {
     const { a } = await webGirl("0712555011");
     expect((await a.patch("/api/me").send({ language: "en" })).body).toEqual({ error: "csrf" });

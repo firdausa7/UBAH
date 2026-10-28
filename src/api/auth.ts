@@ -19,7 +19,9 @@ export function authApi(db: Db, opts: { loginLimiter: RequestHandler }): Router 
     const a = await readActor(db, req);
     if (!a) return res.status(401).json({ error: "not_signed_in" });
     if (a.role === "girl") return res.json({ role: "girl", home: HOME.girl, language: a.girl.language, locked: a.locked, ...(a.locked ? {} : { anonId: a.girl.anon_id }) });
-    res.json({ role: a.role, home: HOME[a.role], name: a.staff.name });
+    // Signed in as a girl too (a shared phone): her space still opens.
+    const girlToo = Boolean(await readGirlSession(db, req));
+    res.json({ role: a.role, home: HOME[a.role], name: a.staff.name, ...(girlToo ? { also: ["girl"] } : {}) });
   });
 
   // ---- Girls ----

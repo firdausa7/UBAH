@@ -40,7 +40,8 @@ export function RequireRole({ role, children }) {
   const location = useLocation()
   if (session === undefined) return <Waiting />
   if (!session) return <Navigate to="/login" replace state={{ from: location.pathname }} />
-  if (session.role !== role) {
+  // A staff member's browser can also hold a girl's sign-in (a shared phone): her space still opens.
+  if (session.role !== role && !session.also?.includes(role)) {
     if (session.role === 'staff') {
       window.location.replace('/staff')
       return <Waiting />
