@@ -98,6 +98,8 @@ export default function MessageView({ id, back, onChange }) {
                 </p>
                 <p className="mt-1 text-[13px] text-muted">
                   {r.worker} · {when(r.at)} · {r.source === 'template' ? 'reviewed template' : r.source === 'machine' ? 'machine translated' : 'English'}
+                  {' · '}
+                  {r.seenAt ? <span className="font-medium text-accent">Seen {when(r.seenAt)}</span> : r.channel === 'web' || r.channel === 'app' ? 'Not seen yet' : `Sent by ${CHANNELS[r.channel] ?? r.channel}`}
                 </p>
               </li>
             ))}

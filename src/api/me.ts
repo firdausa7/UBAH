@@ -20,6 +20,9 @@ async function conversation(db: Db, girlId: number, after: number) {
       WHERE m.user_id = $1 AND m.id > $2 AND m.kind <> 'location' ORDER BY m.id LIMIT 200`,
     [girlId, after],
   );
+  // What her app has now shown her counts as seen (her worker sees "Seen" on the reply).
+  const unseen = rows.filter((m) => m.direction === "out" && m.sent_by_staff).map((m) => m.id);
+  if (unseen.length) await db.query(`UPDATE messages SET read_at = now() WHERE id = ANY($1::int[]) AND read_at IS NULL`, [unseen]);
   return rows.map((m) => {
     const from = m.direction === "in" ? "me" : m.sent_by_staff ? "worker" : "ubah";
     // Ubah's numbered menus ("1 Find a clinic…") become buttons, as on WhatsApp. A worker's own

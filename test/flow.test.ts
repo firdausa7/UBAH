@@ -104,8 +104,11 @@ describe("girl → worker → girl", () => {
     const sent = await nurse.post(`/api/worker/messages/${m.id}/reply`).set(H).send({ english: "Please visit the clinic this week." });
     expect(sent.body).toMatchObject({ source: "machine", translated: "SO(Please visit the clinic this week.)" });
 
+    // Not seen until her app shows it; then her worker sees "Seen".
+    expect((await nurse.get(`/api/worker/messages/${m.id}`)).body.replies[0]).toMatchObject({ seenAt: null, channel: "web" });
     const conv = (await her.get("/api/me/messages")).body.messages;
     expect(conv.at(-1)).toMatchObject({ from: "worker", text: "SO(Please visit the clinic this week.)", english: "Please visit the clinic this week." });
+    expect((await nurse.get(`/api/worker/messages/${m.id}`)).body.replies[0].seenAt).toBeTruthy();
     const [r] = await db.query(`SELECT translation_source, english_text FROM replies WHERE message_id = $1`, [m.id]);
     expect(r).toEqual({ translation_source: "machine", english_text: "Please visit the clinic this week." });
     expect((await db.query(`SELECT 1 FROM audit_log WHERE action = 'message.reply' AND target_id = $1`, [String(m.id)])).length).toBe(1);

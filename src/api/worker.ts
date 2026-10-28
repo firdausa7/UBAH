@@ -119,13 +119,14 @@ export function workerApi(db: Db): Router {
     }
     const [girl] = await db.query<any>(`SELECT id, anon_id, language, channel FROM users WHERE id = $1`, [m.user_id]);
     const replies = await db.query<any>(
-      `SELECT r.id, r.english_text, r.translated_text, r.translation_source, r.created_at, s.name AS worker FROM replies r JOIN staff s ON s.id = r.worker_id WHERE r.message_id = $1 ORDER BY r.id`,
+      `SELECT r.id, r.english_text, r.translated_text, r.translation_source, r.created_at, s.name AS worker, sm.read_at, sm.channel AS sent_channel
+         FROM replies r JOIN staff s ON s.id = r.worker_id LEFT JOIN messages sm ON sm.id = r.sent_message_id WHERE r.message_id = $1 ORDER BY r.id`,
       [m.id],
     );
     res.json({
       message: toWorkerMessage(m, w.id, m.share_voice),
       girl: { id: girl.id, anonId: girl.anon_id, language: girl.language, languageLabel: workerLabel(girl.language) },
-      replies: replies.map((r) => ({ id: r.id, english: r.english_text, translated: r.translated_text, source: r.translation_source, worker: r.worker, at: r.created_at })),
+      replies: replies.map((r) => ({ id: r.id, english: r.english_text, translated: r.translated_text, source: r.translation_source, worker: r.worker, at: r.created_at, seenAt: r.read_at, channel: r.sent_channel })),
       templates: (await reviewedTemplates(db, girl.language ?? "en")).map((t) => ({ id: t.id, english: t.english, translated: t.translated })),
     });
   });
