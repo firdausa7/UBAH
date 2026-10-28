@@ -3,6 +3,7 @@ import { shareOnRequest } from "./auth/access.js";
 import { config } from "./config.js";
 import { t, languageMenu } from "./i18n.js";
 import { getOrCreateUser, openCase, say } from "./engine.js";
+import { urgentHelp, type UrgentKind } from "./urgentHelp.js";
 import { issuePass, SERVICE_MENU } from "./referrals.js";
 import { sendToUser } from "./channels/outbound.js";
 import { refreshCaches } from "./caches.js";
@@ -18,11 +19,7 @@ const MAX = 182;
 const con = (s: string) => `CON ${s}`.slice(0, MAX);
 const end = (s: string) => `END ${s}`.slice(0, MAX);
 const CATEGORY_ORDER = ["periods", "conditions", "pregnancy", "family_planning", "sti", "safety", "fgm", "body", "feelings", "other"];
-const URGENT: Record<string, { reason: string; services: string[] }> = {
-  "1": { reason: "danger_medical", services: ["antenatal", "pregnancy_test", "period_care"] },
-  "2": { reason: "danger_safety", services: ["safety", "counselling"] },
-  "3": { reason: "danger_selfharm", services: ["counselling"] },
-};
+const URGENT: Record<string, UrgentKind> = { "1": "medical", "2": "safety", "3": "selfharm" };
 
 export async function handleUssd(db: Db, phone: string, text: string): Promise<string> {
   const desk = await handleDeskUssd(db, phone, text);
@@ -112,20 +109,9 @@ export async function handleUssd(db: Db, phone: string, text: string): Promise<s
   // 5 Urgent help now: always a human, at once.
   if (choice === "5") {
     if (!rest.length) return con(t(lang, "ussd_urgent_menu"));
-    const u = URGENT[rest[0]];
-    if (!u) return end(t(lang, "ussd_invalid"));
-    // Urgent like any danger sign: her worker sees it whatever she shares, at the top of the inbox.
-    await db.query(`INSERT INTO messages (user_id, direction, channel, kind, body, danger, urgent, urgent_reason) VALUES ($1,'in','ussd','text',$2,$3,TRUE,'ussd:urgent help menu')`, [
-      user.id,
-      `[USSD urgent help: ${u.reason}]`,
-      u.reason.replace("danger_", ""),
-    ]);
-    await openCase(db, user, u.reason, true, `USSD urgent help: ${u.reason.replace("danger_", "")}`);
-    if (u.reason === "danger_medical") {
-      const pass = await issuePass(db, user.id, u.services, true);
-      if (pass) await say(db, user, "urgent_medical", { code: pass.code, clinic: pass.clinic.name, area: pass.clinic.area });
-      else await say(db, user, "urgent_safety");
-    } else await say(db, user, u.reason === "danger_safety" ? "urgent_safety" : "urgent_selfharm");
+    const kind = URGENT[rest[0]];
+    if (!kind) return end(t(lang, "ussd_invalid"));
+    await urgentHelp(db, user, kind, "ussd");
     return end(t(lang, "ussd_urgent_done"));
   }
 

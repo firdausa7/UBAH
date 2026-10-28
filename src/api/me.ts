@@ -10,6 +10,8 @@ import { eraseGirl } from "../erase.js";
 import { parseMenu } from "../channels/menu.js";
 import { pushEnabled, subscribe, unsubscribe, validEndpoint } from "../push.js";
 import { validAgeBand } from "../auth/girls.js";
+import { addEntry, deleteEntry, entriesOf } from "../wellbeing.js";
+import { URGENT_KINDS, urgentHelp, type UrgentKind } from "../urgentHelp.js";
 import { config } from "../config.js";
 
 // Her conversation as she sees it: her messages, Ubah's answers, and her health worker's replies in
@@ -77,6 +79,34 @@ export function meApi(db: Db): Router {
     res.json({ language: l.code });
   });
 
+  // ---- My wellbeing: only she can read it (there is no staff route) ----
+  r.get("/wellbeing", async (req, res) => {
+    res.json({ entries: await entriesOf(db, girlOf(req).id) });
+  });
+
+  r.post("/wellbeing", sendLimit, async (req, res) => {
+    const g = girlOf(req);
+    const mood = req.body?.mood === undefined || req.body?.mood === null ? null : Number(req.body.mood);
+    const note = String(req.body?.note ?? "").trim().slice(0, 4000) || null;
+    if (mood !== null && !(Number.isInteger(mood) && mood >= 1 && mood <= 5)) return res.status(400).json({ error: "mood" });
+    if (mood === null && !note) return res.status(400).json({ error: "empty" });
+    res.status(201).json(await addEntry(db, g.id, g.language, mood, note));
+  });
+
+  r.delete("/wellbeing/:id", async (req, res) => {
+    const ok = await deleteEntry(db, girlOf(req).id, Number(req.params.id));
+    res.status(ok ? 200 : 404).json(ok ? { ok: true } : { error: "not_found" });
+  });
+
+  // "I need help now": her own choice, always a person at once (the same path as USSD's urgent menu).
+  r.post("/urgent", sendLimit, async (req, res) => {
+    const kind = String(req.body?.kind ?? "") as UrgentKind;
+    if (!URGENT_KINDS.includes(kind)) return res.status(400).json({ error: "kind" });
+    const g = girlOf(req);
+    await urgentHelp(db, { ...g, channel: "web" }, kind, "web");
+    res.json({ messages: await conversation(db, g.id, Math.max(0, Number(req.query.after) || 0)) });
+  });
+
   // Her right to see her data: everything Ubah keeps about her (never her phone number in clear,
   // and never staff names or notes about her case).
   r.get("/data", async (req, res) => {
@@ -93,11 +123,12 @@ export function meApi(db: Db): Router {
     const passes = await passesFor(db, g.id);
     const [voice] = await db.query<{ n: number }>(`SELECT count(*)::int AS n FROM voice_notes WHERE user_id = $1`, [g.id]);
     const [devices] = await db.query<{ n: number }>(`SELECT count(*)::int AS n FROM push_subscriptions WHERE user_id = $1`, [g.id]);
+    const wellbeing = await entriesOf(db, g.id, 10_000);
     res.json({
       account: { code: u.anon_id, language: u.language, ageBand: u.age_band ?? null, channel: u.channel, joined: u.created_at, phone: "locked" },
       sharing: await consents(db, g.id),
       healthWorker: worker ? worker.role : null,
-      counts: { messages: messages.length, passes: passes.length, voiceRecordings: voice.n, notificationDevices: devices.n },
+      counts: { messages: messages.length, passes: passes.length, voiceRecordings: voice.n, notificationDevices: devices.n, wellbeingEntries: wellbeing.length },
       messages: messages.map((m) => ({
         at: m.created_at,
         from: m.direction === "in" ? "me" : m.sent_by_staff ? "health worker" : "Ubah",
@@ -106,6 +137,7 @@ export function meApi(db: Db): Router {
         ...(m.direction === "out" && m.sent_by_staff && m.english_text ? { english: m.english_text } : {}),
       })),
       passes,
+      wellbeing,
     });
   });
 

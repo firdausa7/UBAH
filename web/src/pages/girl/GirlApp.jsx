@@ -4,6 +4,7 @@ import { api, ApiError } from '../../lib/api.js'
 import LockScreen from './LockScreen.jsx'
 import Intro, { introSeen } from './Intro.jsx'
 import MyData from './MyData.jsx'
+import Wellbeing from './Wellbeing.jsx'
 import { Waiting } from '../../lib/session.jsx'
 import { StringsProvider, savedLanguage, useStrings } from '../../lib/strings.jsx'
 import { registerOffline } from '../../lib/offline.js'
@@ -56,6 +57,7 @@ export default function GirlApp() {
           <Route path="learn" element={<Learn />} />
           <Route path="settings" element={<Settings me={me} setMe={setMe} />} />
           <Route path="data" element={<MyData />} />
+          <Route path="wellbeing" element={<Wellbeing />} />
         </Routes>
       </Shell>
     </StringsProvider>
@@ -89,6 +91,7 @@ function Shell({ children }) {
 const NAV = [
   ['/me', 'app_nav_ask', <path key="a" d="M4 5h16v11H8l-4 4z" />],
   ['/me/care', 'app_nav_care', <path key="c" d="M12 21s-7-4.5-7-11a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 6.5-7 11-7 11z" />],
+  ['/me/wellbeing', 'wb_tab', <path key="w" d="M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM8.5 14.5s1.2 1.5 3.5 1.5 3.5-1.5 3.5-1.5M9 10h.01M15 10h.01" />],
   ['/me/passes', 'app_nav_passes', <path key="p" d="M4 7h16v10H4zM8 7v10" />],
   ['/me/learn', 'app_nav_learn', <path key="l" d="M4 5h7a3 3 0 0 1 3 3v12a2 2 0 0 0-2-2H4zM20 5h-6M20 5v13h-6" />],
 ]
@@ -97,7 +100,7 @@ function BottomNav() {
   const { t } = useStrings()
   return (
     <nav aria-label="Ubah" className="fixed inset-x-0 bottom-0 z-20 border-t border-hair bg-white/95 pb-[env(safe-area-inset-bottom)] backdrop-blur">
-      <ul className="mx-auto grid max-w-xl grid-cols-4">
+      <ul className="mx-auto grid max-w-xl grid-cols-5">
         {NAV.map(([to, key, icon]) => (
           <li key={to}>
             <NavLink to={to} end className={({ isActive }) => `flex min-h-14 flex-col items-center justify-center gap-0.5 text-[12px] no-underline ${isActive ? 'font-medium text-accent' : 'text-muted'}`}>

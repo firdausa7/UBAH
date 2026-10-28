@@ -46,7 +46,11 @@ export async function applyRetention(db: Db): Promise<RetentionPlan | null> {
     return plan;
   }
   if (plan.inactiveDays) for (const g of await inactiveGirls(db, plan.inactiveDays)) await eraseGirl(db, g);
-  if (plan.messageDays) await db.query(`DELETE FROM messages WHERE id IN (SELECT m.id ${OLD_MESSAGES})`, [plan.messageDays]);
+  if (plan.messageDays) {
+    await db.query(`DELETE FROM messages WHERE id IN (SELECT m.id ${OLD_MESSAGES})`, [plan.messageDays]);
+    // Her private wellbeing entries follow the same period.
+    await db.query(`DELETE FROM wellbeing_entries WHERE created_at < now() - make_interval(days => $1)`, [plan.messageDays]);
+  }
   await audit(db, { action: "retention.applied", details: { ...plan } });
   log.info({ retention: plan }, "retention applied");
   return plan;
