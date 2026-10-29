@@ -2,7 +2,8 @@ import { Router } from "express";
 import type { Db } from "../db.js";
 import { languageConfig, workerLabel } from "../languages/index.js";
 import { requireRole, workerOf } from "../auth/roles.js";
-import { consents, isAssigned, logAccess } from "../auth/access.js";
+import { ACTIVE_ASSIGNMENT, assignedWorkerId, consents, isAssigned, logAccess } from "../auth/access.js";
+import { canSee, caseEvent, REASON_LABEL, visibleSql } from "../cases.js";
 import { checkAudioSignature, loadVoiceNote, signedAudioUrl } from "../voice/store.js";
 import { auditReq } from "../audit.js";
 import { replyToMessage, resolveMessage, reviewedTemplates } from "../replies.js";
@@ -42,8 +43,8 @@ function toWorkerMessage(m: any, workerId: number, shareVoice: boolean) {
 const isMinor = (band: string | null) => band === "under_15" || band === "15_17";
 
 // Latest consent per girl and scope, as SQL (for the inbox query).
-const SHARES = (scope: "messages" | "voice") =>
-  `COALESCE((SELECT granted FROM consents k WHERE k.user_id = m.user_id AND k.scope = '${scope}' ORDER BY k.id DESC LIMIT 1), FALSE)`;
+const SHARES = (scope: "messages" | "voice", girl = "m.user_id") =>
+  `COALESCE((SELECT granted FROM consents k WHERE k.user_id = ${girl} AND k.scope = '${scope}' ORDER BY k.id DESC LIMIT 1), FALSE)`;
 
 // /api/worker: a health worker sees only the girls assigned to them, and of each girl only what
 // she agreed to share (urgent messages always). Every look is written to access_log.
@@ -96,6 +97,58 @@ export function workerApi(db: Db): Router {
     res.json({
       messages: rows.map((m) => ({ ...toWorkerMessage(m, w.id, m.share_voice), girl: { id: m.user_id, anonId: m.anon_id, language: m.girl_language, languageLabel: workerLabel(m.girl_language), minor: isMinor(m.age_band) } })),
     });
+  });
+
+  // Girls who asked for a person (or have an open case) and have no worker yet, once each: any nurse
+  // or Dada who may see the case can take her. Only what /staff/inbox already shows; her words only if she shares
+  // them (urgent always).
+  r.get("/waiting", async (req, res) => {
+    const w = workerOf(req);
+    const rows = await db.query<any>(
+      `SELECT * FROM (
+         SELECT DISTINCT ON (c.user_id) c.id, c.user_id, c.reason, c.urgent, c.created_at, u.anon_id, u.language, u.channel, u.age_band,
+                CASE WHEN c.urgent OR ${SHARES("messages", "u.id")} THEN c.summary END AS summary
+           FROM cases c JOIN users u ON u.id = c.user_id
+          WHERE c.status = 'open' AND ${visibleSql(w, "$1")} AND (c.assigned_to IS NULL OR c.assigned_to = $1)
+            AND NOT EXISTS (SELECT 1 FROM assignments a WHERE a.girl_id = u.id AND ${ACTIVE_ASSIGNMENT})
+          ORDER BY c.user_id, c.urgent DESC, c.created_at
+       ) w ORDER BY urgent DESC, created_at LIMIT 100`,
+      [w.id],
+    );
+    for (const id of new Set(rows.map((c) => c.user_id as number))) await logAccess(db, req, id, "profile");
+    res.json({
+      waiting: rows.map((c) => ({
+        caseId: c.id,
+        reason: REASON_LABEL[c.reason] ?? c.reason,
+        urgent: c.urgent,
+        summary: c.summary,
+        since: c.created_at,
+        girl: { id: c.user_id, anonId: c.anon_id, language: c.language, languageLabel: workerLabel(c.language), channel: c.channel, minor: isMinor(c.age_band) },
+      })),
+    });
+  });
+
+  // Take her: she becomes this worker's girl (her shared messages then show in their inbox) and her
+  // open case is claimed. If someone took her first, say so (one worker per girl, kept by the database).
+  r.post("/waiting/:caseId/take", async (req, res) => {
+    const w = workerOf(req);
+    const caseId = Number(req.params.caseId);
+    const [c] = Number.isInteger(caseId)
+      ? await db.query<{ id: number; user_id: number; level: string; assigned_to: number | null }>(`SELECT id, user_id, level, assigned_to FROM cases WHERE id = $1 AND status = 'open'`, [caseId])
+      : [];
+    if (!c || !canSee(w, c)) return res.status(404).json({ error: "not_found" });
+    if ((c.assigned_to && c.assigned_to !== w.id) || (await assignedWorkerId(db, c.user_id))) return res.status(409).json({ error: "taken" });
+    // A worker who has left keeps no girl: end only such stale rows, never someone's live assignment.
+    await db.query(`UPDATE assignments a SET ended_at = now() WHERE a.girl_id = $1 AND a.ended_at IS NULL AND NOT (${ACTIVE_ASSIGNMENT})`, [c.user_id]);
+    try {
+      await db.query(`INSERT INTO assignments (health_worker_id, girl_id, assigned_by) VALUES ($1,$2,$1)`, [w.id, c.user_id]);
+    } catch {
+      return res.status(409).json({ error: "taken" }); // another worker, a moment earlier
+    }
+    const claimed = await db.query(`UPDATE cases SET assigned_to = $2, assigned_at = now() WHERE id = $1 AND assigned_to IS NULL RETURNING id`, [c.id, w.id]);
+    if (claimed.length) await caseEvent(db, c.id, w.id, "claimed");
+    await auditReq(db, req, { action: "girl.take", targetType: "girl", targetId: c.user_id, details: { caseId: c.id } });
+    res.json({ girlId: c.user_id, caseId: c.id });
   });
 
   // One message, its replies, and the reply suggestions for her language. Opening it marks it "open".

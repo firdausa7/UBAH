@@ -188,6 +188,50 @@ describe("girl → worker → girl", () => {
     expect((await cases()).filter((c) => c.status === "open").map((c) => c.reason)).toEqual(["asked_for_person"]);
   });
 
+  it("a girl with no worker who asks for a person waits in /worker until a Dada takes her", async () => {
+    const { a: her, user } = await webGirl("0712600091", "en");
+    const dada = await staff("dada");
+    const nurse = await staff("nurse");
+    await her.post("/api/me/messages").set(H).send({ text: "DADA" });
+    // A second open case (from before cases were merged): she is still listed once, her first case.
+    await db.query(`INSERT INTO cases (user_id, reason, urgent, summary, level) VALUES ($1, 'voice_unclear', FALSE, 'later', 'dada')`, [user.id]);
+    const waiting = (await dada.get("/api/worker/waiting")).body.waiting.filter((w: any) => w.girl.id === user.id);
+    expect(waiting).toHaveLength(1);
+    expect(waiting[0]).toMatchObject({ reason: "Asked for a person", urgent: false, summary: "DADA", girl: { anonId: user.anon_id } });
+    // Not hers yet: nothing of the girl in the Dada's inbox.
+    expect((await dada.get("/api/worker/inbox")).body.messages.filter((m: any) => m.girl.id === user.id)).toEqual([]);
+
+    const take = await dada.post(`/api/worker/waiting/${waiting[0].caseId}/take`).set(H);
+    expect(take.status).toBe(200);
+    expect((await nurse.post(`/api/worker/waiting/${waiting[0].caseId}/take`).set(H)).body).toEqual({ error: "taken" });
+    const [a] = await db.query(`SELECT health_worker_id FROM assignments WHERE girl_id = $1 AND ended_at IS NULL`, [user.id]);
+    expect(a.health_worker_id).toBe(await staffId("dada"));
+    const [c] = await db.query(`SELECT assigned_to FROM cases WHERE id = $1`, [waiting[0].caseId]);
+    expect(c.assigned_to).toBe(await staffId("dada"));
+    expect((await dada.get("/api/worker/waiting")).body.waiting.some((w: any) => w.girl.id === user.id)).toBe(false);
+    // From now on her messages come to this Dada.
+    await her.post("/api/me/messages").set(H).send({ text: "Can I talk about my mother?" });
+    expect((await dada.get("/api/worker/inbox")).body.messages.some((m: any) => m.girl.id === user.id)).toBe(true);
+    const [log] = await db.query(`SELECT action FROM audit_log WHERE action = 'girl.take' AND target_id = $1`, [String(user.id)]);
+    expect(log).toBeTruthy();
+  });
+
+  it("the waiting list follows who may see what: nurse-level cases for nurses, her words only if she shares", async () => {
+    const { a: urgentGirl, user: u1 } = await webGirl("0712600092", "en");
+    await urgentGirl.post("/api/me/messages").set(H).send({ text: "I want to kill myself" });
+    const dada = await staff("dada");
+    const nurse = await staff("nurse");
+    expect((await dada.get("/api/worker/waiting")).body.waiting.some((w: any) => w.girl.id === u1.id)).toBe(false);
+    const forNurse = (await nurse.get("/api/worker/waiting")).body.waiting.find((w: any) => w.girl.id === u1.id);
+    expect(forNurse).toMatchObject({ urgent: true });
+    expect((await dada.post(`/api/worker/waiting/${forNurse.caseId}/take`).set(H)).status).toBe(404);
+
+    const { a: privateGirl, user: u2 } = await webGirl("0712600093", "en", { messages: false });
+    await privateGirl.post("/api/me/messages").set(H).send({ text: "DADA" });
+    const w2 = (await dada.get("/api/worker/waiting")).body.waiting.find((w: any) => w.girl.id === u2.id);
+    expect(w2).toMatchObject({ reason: "Asked for a person", summary: null });
+  });
+
   it("sends nothing when the reply can't be translated, and tells the worker", async () => {
     const { a: her, user } = await webGirl("0712600004", "so");
     await assign(user.id, "nurse");

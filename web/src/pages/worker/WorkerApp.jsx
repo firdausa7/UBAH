@@ -55,6 +55,7 @@ function Desk() {
   }
   const urgent = items?.filter((m) => m.urgent && m.status !== 'resolved').length ?? 0
   const alerts = useUrgentAlerts(load)
+  const waiting = useWaiting(load)
 
   return (
     <div className="mx-auto grid max-w-7xl gap-6 px-5 py-6 lg:grid-cols-[minmax(340px,420px)_1fr]">
@@ -108,6 +109,7 @@ function Desk() {
           </div>
         </div>
         {error && <p className="mb-3 rounded-2xl bg-blush px-4 py-2 text-[15px] text-rose-ink">{error}</p>}
+        <Waiting {...waiting} />
         {items === null ? (
           <p className="text-muted">Loading…</p>
         ) : items.length === 0 ? (
@@ -134,6 +136,71 @@ function Desk() {
         )}
       </section>
     </div>
+  )
+}
+
+// Girls with no worker who asked for a person (or have an open case). Taking one makes her yours.
+function useWaiting(onTaken) {
+  const [list, setList] = useState([])
+  const [note, setNote] = useState('')
+  const [busy, setBusy] = useState(0)
+  const load = useCallback(() => api.get('/worker/waiting').then((d) => setList(d.waiting)).catch(() => {}), [])
+  useEffect(() => {
+    load()
+    const t = setInterval(load, POLL_MS)
+    return () => clearInterval(t)
+  }, [load])
+  const take = async (w) => {
+    setBusy(w.caseId)
+    setNote('')
+    try {
+      await api.post(`/worker/waiting/${w.caseId}/take`)
+      setNote(`Girl ${w.girl.anonId} is now yours. Her messages appear below.`)
+      onTaken()
+    } catch (e) {
+      setNote(e.code === 'taken' ? `Someone else took girl ${w.girl.anonId} first.` : 'That did not work. Please try again.')
+    } finally {
+      setBusy(0)
+      load()
+    }
+  }
+  return { list, note, busy, take }
+}
+
+function Waiting({ list, note, busy, take }) {
+  if (!list.length && !note) return null
+  return (
+    <section aria-label="Waiting for a Dada" className="mb-5 rounded-3xl bg-soft p-4 ring-1 ring-hair">
+      <h2 className="mb-1 text-[24px] leading-tight">
+        Waiting for <em>a Dada</em>
+      </h2>
+      <p className="mb-3 text-[14px] text-muted">These girls asked for a person and have no Dada yet. Take one and she becomes yours.</p>
+      {note && (
+        <p role="status" className="mb-3 rounded-2xl bg-lavender px-4 py-2 text-[15px] text-plum">
+          {note}
+        </p>
+      )}
+      <ol className="flex flex-col gap-2">
+        {list.map((w) => (
+          <li key={w.caseId} className={`rounded-2xl p-3 ring-1 ${w.urgent ? 'bg-blush ring-rose' : 'bg-white ring-hair'}`}>
+            <div className="mb-1 flex flex-wrap items-center gap-2 text-[13px]">
+              {w.urgent && <span className="tag bg-urgent text-white">Urgent</span>}
+              <span className="font-medium text-plum">Girl {w.girl.anonId}</span>
+              {w.girl.minor && <span className="tag bg-rose text-rose-ink">Under 18</span>}
+              <span className="text-muted">
+                {w.girl.languageLabel} · {CHANNELS[w.girl.channel] ?? w.girl.channel}
+              </span>
+              <span className="ml-auto text-muted">{when(w.since)}</span>
+            </div>
+            <p className="text-[15px] text-plum">{w.reason}</p>
+            <p className="mb-2 line-clamp-2 text-[15px] text-text">{w.summary ?? 'She keeps her messages private.'}</p>
+            <button type="button" className="btn min-h-11 px-5 text-[15px]" disabled={busy === w.caseId} onClick={() => take(w)}>
+              {busy === w.caseId ? 'Taking…' : `Take girl ${w.girl.anonId}`}
+            </button>
+          </li>
+        ))}
+      </ol>
+    </section>
   )
 }
 

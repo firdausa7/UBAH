@@ -56,6 +56,8 @@ export const INVENTORY = [
   "POST /api/me/messages",
   "POST /api/me/voice",
   "GET /api/worker/inbox",
+  "GET /api/worker/waiting",
+  "POST /api/worker/waiting/:caseId/take",
   "GET /api/worker/messages/:id",
   "POST /api/worker/messages/:id/reply",
   "POST /api/worker/messages/:id/resolve",

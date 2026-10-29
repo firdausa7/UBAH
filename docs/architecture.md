@@ -74,7 +74,7 @@ One Node process (Express 5, TypeScript run by tsx) serves everything:
 | Role | Signs in with | Sees |
 |---|---|---|
 | Girl | phone + SMS code once, then a 4-digit PIN; session locks after 15 minutes idle | Only her own conversation, passes, journal and reports |
-| Nurse, Dada (health worker) | password + authenticator app (nurse) or SMS code (Dada) | Girls assigned to them; their messages only if she shares them; urgent messages always |
+| Nurse, Dada (health worker) | password + authenticator app (nurse) or SMS code (Dada) | Girls assigned to them; their messages only if she shares them; urgent messages always. Plus a "Waiting for a Dada" list of girls with no worker and an open case (her words only if she shares); taking one assigns her |
 | Protection officer | password + authenticator app | Confidential reports only (`/staff/safeguarding`) |
 | Admin | password + authenticator app | Staff, clinics, sites, assignments, audit log; not report contents |
 | Other staff roles | password, + authenticator app for partner, reviewer and editor | Their own area (clinic desk, partner, reviewer, editor, translator) |

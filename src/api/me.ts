@@ -201,7 +201,9 @@ export function meApi(db: Db): Router {
     const g = girlOf(req);
     const b = req.body ?? {};
     for (const k of ["messages", "voice"]) if (k in b && typeof b[k] !== "boolean") return res.status(400).json({ error: k });
-    await setConsents(db, g.id, { messages: b.messages, voice: b.voice });
+    // Her answer in the app is a choice even when it matches the default: a "no" here must still hold
+    // when she later asks for a person.
+    await setConsents(db, g.id, { messages: b.messages, voice: b.voice }, { explicit: true });
     res.json({ consents: await consents(db, g.id) });
   });
 
