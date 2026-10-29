@@ -36,6 +36,12 @@ const later = (h: number) => new Date(Date.now() + h * 3600e3);
 const sentTo = (phone: string) => mockWhatsAppSent.filter((m) => m.to === phone);
 const smsTo = (phone: string) => mockSmsSent.filter((m) => m.to === phone);
 const settle = () => new Promise((r) => setTimeout(r, 250));
+// Webhooks answer at once and the work continues after: wait for its result, not for a fixed time
+// (a slower machine, e.g. CI on real Postgres, can take longer than settle()).
+async function until(check: () => Promise<boolean>, ms = 10_000) {
+  for (const end = Date.now() + ms; Date.now() < end; await new Promise((r) => setTimeout(r, 50))) if (await check()) return;
+  throw new Error("timed out waiting for the webhook's work");
+}
 
 function waText(from: string, id: string, body: string) {
   return { entry: [{ changes: [{ value: { messages: [{ from, id, timestamp: "1", type: "text", text: { body } }] } }] }] };
@@ -153,7 +159,8 @@ describe("WhatsApp menus, window and delivery", () => {
     await request(app).post("/webhooks/whatsapp").send(waText(from, "wamid.c3", "my period is late"));
     await settle();
     await request(app).post("/webhooks/whatsapp").send(waButton(from, "wamid.c4", "1"));
-    await settle();
+    // Her pass and its day-3 check-in exist once the "1" (find care) has been handled.
+    await until(async () => (await db.query(`SELECT 1 FROM checkins WHERE user_id = (SELECT id FROM users WHERE phone_hash = $1)`, [hashPhone(from)])).length > 0);
     await db.query(`UPDATE users SET wa_last_inbound_at = now() - interval '3 days' WHERE phone_hash = $1`, [hashPhone(from)]);
     // No template configured: the brief's SMS fallback.
     await sendDueCheckins(db, later(73));
@@ -169,7 +176,7 @@ describe("WhatsApp menus, window and delivery", () => {
     expect(tpl.template.components.filter((c: any) => c.type === "button").map((c: any) => c.parameters[0].payload)).toEqual(["1", "2"]);
     // Tapping "Yes" on the template.
     await request(app).post("/webhooks/whatsapp").send({ entry: [{ changes: [{ value: { messages: [{ from, id: "wamid.c5", type: "button", button: { payload: "1", text: "Yes" } }] } }] }] });
-    await settle();
+    await until(async () => /checkin_(clinic|respect)/.test((await getUser(from)).state.step));
     expect((await getUser(from)).state.step).toMatch(/checkin_(clinic|respect)/);
   });
 
