@@ -24,6 +24,9 @@ services:
     dockerfilePath: ./Dockerfile
     region: frankfurt
     healthCheckPath: /health
+    # Deploy a push only after GitHub's checks pass (.github/workflows/ci.yml): a push whose tests fail
+    # never goes online. Render's other values: commit (every push), off.
+    autoDeployTrigger: checksPass
     envVars:
       - key: NODE_ENV
         value: production
