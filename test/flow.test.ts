@@ -167,6 +167,27 @@ describe("girl → worker → girl", () => {
     expect(o.channel).toBe("whatsapp");
   });
 
+  it("asking for a person twice keeps one case (no two Dadas answering her); danger still opens its own", async () => {
+    const g = girl(db, "0712600099");
+    await g.send("hi");
+    await g.send("3"); // English
+    const [u] = await db.query(`SELECT id FROM users WHERE phone_hash = $1`, [hashPhone("0712600099")]);
+    const cases = () => db.query<{ id: number; reason: string; urgent: boolean; status: string }>(`SELECT id, reason, urgent, status FROM cases WHERE user_id = $1 ORDER BY id`, [u.id]);
+    await g.send("DADA");
+    await g.send("DADA");
+    const one = await cases();
+    expect(one.map((c) => c.reason)).toEqual(["asked_for_person"]);
+    const events = await db.query<{ kind: string }>(`SELECT kind FROM case_events WHERE case_id = $1 ORDER BY id`, [one[0].id]);
+    expect(events.map((e) => e.kind)).toEqual(["opened", "asked_again"]);
+    // A danger sign is never folded into an open case: it gets its own, urgent, with the alerts.
+    await g.send("I am bleeding a lot and feel dizzy");
+    expect((await cases()).filter((c) => c.urgent)).toHaveLength(1);
+    // Once handled, asking again opens a new case.
+    await db.query(`UPDATE cases SET status = 'handled' WHERE user_id = $1`, [u.id]);
+    await g.send("DADA");
+    expect((await cases()).filter((c) => c.status === "open").map((c) => c.reason)).toEqual(["asked_for_person"]);
+  });
+
   it("sends nothing when the reply can't be translated, and tells the worker", async () => {
     const { a: her, user } = await webGirl("0712600004", "so");
     await assign(user.id, "nurse");

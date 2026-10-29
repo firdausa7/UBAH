@@ -402,7 +402,7 @@ async function suggestNearest(db: Db, user: UserRow, where: { lat: number; lng: 
 
 async function requestDada(db: Db, user: UserRow, text: string) {
   await shareOnRequest(db, user.id);
-  await openCase(db, user, "asked_for_person", false, text);
+  await askForPerson(db, user, text);
   await setState(db, user, { step: "free" });
   return say(db, user, "dada_requested");
 }
@@ -413,6 +413,19 @@ const DRAFTS: Record<string, string> = {
   danger_selfharm: "I'm here with you. Are you safe right now? Is there someone you trust nearby?",
   asked_for_person: "Hi, I'm a Dada from Ubah. How can I help you today?",
 };
+
+// One open case per girl when she asks for a person: asking again (or on another channel) adds to the
+// case she already has, so two Dadas don't each answer her. Danger signs still always open their own.
+export async function askForPerson(db: Db, user: UserRow, summary: string): Promise<number> {
+  const [open] = await db.query<{ id: number; urgent: boolean; level: string }>(
+    `SELECT id, urgent, level FROM cases WHERE user_id = $1 AND status = 'open' ORDER BY urgent DESC, id DESC LIMIT 1`,
+    [user.id],
+  );
+  if (!open) return openCase(db, user, "asked_for_person", false, summary);
+  await caseEvent(db, open.id, null, "asked_again", { summary: summary.slice(0, 500) });
+  caseBus.emit("case", { id: open.id, urgent: open.urgent, level: open.level, kind: "updated" } satisfies CaseSignal);
+  return open.id;
+}
 
 export async function openCase(db: Db, user: UserRow, reason: string, urgent: boolean, summary: string) {
   const level = levelFor(reason);

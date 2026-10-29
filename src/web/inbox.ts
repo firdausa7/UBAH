@@ -29,6 +29,7 @@ const EVENT_LABEL: Record<string, string> = {
   escalated: "Escalated to a nurse",
   handled: "Marked as handled",
   reopened: "Reopened",
+  asked_again: "Asked for a person again",
   site: "Site set",
   step: "Protection step done",
   step_undone: "Protection step un-ticked",

@@ -2,7 +2,7 @@ import type { Db } from "./db.js";
 import { shareOnRequest } from "./auth/access.js";
 import { config } from "./config.js";
 import { t, languageMenu } from "./i18n.js";
-import { getOrCreateUser, openCase, say } from "./engine.js";
+import { askForPerson, getOrCreateUser, openCase, say } from "./engine.js";
 import { urgentHelp, type UrgentKind } from "./urgentHelp.js";
 import { issuePass, SERVICE_MENU } from "./referrals.js";
 import { sendToUser } from "./channels/outbound.js";
@@ -102,7 +102,7 @@ export async function handleUssd(db: Db, phone: string, text: string): Promise<s
   // 4 Talk to a Dada
   if (choice === "4") {
     await shareOnRequest(db, user.id);
-    await openCase(db, user, "asked_for_person", false, "Asked for a Dada on USSD");
+    await askForPerson(db, user, "Asked for a Dada on USSD");
     return end(t(lang, "ussd_dada"));
   }
 
