@@ -57,11 +57,12 @@ describe("the health information assistant", () => {
     }
   });
 
-  it("has empty, unpublished slots for antenatal and postnatal care: nothing is served until a health partner writes it", async () => {
-    const slots = await db.query(`SELECT id, brief, audience FROM content_topics WHERE id IN ('antenatal-care','postnatal-care') ORDER BY id`);
-    expect(slots.map((s: any) => s.id)).toEqual(["antenatal-care", "postnatal-care"]);
+  it("has empty, unpublished slots for antenatal care, postnatal care and normal periods: nothing is served until a health partner writes it", async () => {
+    const slots = await db.query(`SELECT id, category, brief FROM content_topics WHERE id IN ('antenatal-care','postnatal-care','periods-normal') ORDER BY id`);
+    expect(slots.map((s: any) => s.id)).toEqual(["antenatal-care", "periods-normal", "postnatal-care"]);
     for (const s of slots) expect(s.brief).toMatch(/^DRAFT brief/);
-    expect((await db.query(`SELECT 1 FROM content_versions WHERE topic_id IN ('antenatal-care','postnatal-care')`)).length).toBe(0);
+    expect(slots.find((s: any) => s.id === "periods-normal").category).toBe("periods");
+    expect((await db.query(`SELECT 1 FROM content_versions WHERE topic_id IN ('antenatal-care','postnatal-care','periods-normal')`)).length).toBe(0);
   });
 
   it("lets the content team set a topic's audience in the studio", async () => {

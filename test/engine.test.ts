@@ -2,7 +2,7 @@ import { describe, it, expect, beforeAll } from "vitest";
 import { freshDb, girl } from "./helpers.js";
 import { sendDueCheckins } from "../src/engine.js";
 import { trainAll } from "../src/ml/train.js";
-import { reloadModels } from "../src/ml/models.js";
+import { analyse, reloadModels } from "../src/ml/models.js";
 import type { Db } from "../src/db.js";
 
 beforeAll(() => {
@@ -95,6 +95,19 @@ describe("the closed loop: question -> answer -> pass -> check-in -> dignity sco
     await g.send("hi");
     await g.send("3");
     await g.send("my family is going to circumcise me next week");
+    const [c] = await db.query(`SELECT reason, urgent FROM cases ORDER BY id DESC LIMIT 1`);
+    expect(c).toMatchObject({ reason: "danger_safety", urgent: true });
+  });
+
+  it("knows FGM said other ways, and not boys' circumcision or ordinary cuts", async () => {
+    for (const s of ["i am scared of the cutting", "they say i will be cut in the holidays", "my aunt talks about fgm", "is female circumcision allowed", "they cut girls in our village", "they want to cut my sister"])
+      expect(analyse(s, "en").danger, s).toBe("safety");
+    for (const s of ["can you cut my hair", "i have a paper cut", "my brother had his circumcision", "does male circumcision protect against hiv", "i was cutting onions"])
+      expect(analyse(s, "en").danger, s).toBe("none");
+    const g = girl(db, "0712000117");
+    await g.send("hi");
+    await g.send("3");
+    await g.send("i am scared of the cutting");
     const [c] = await db.query(`SELECT reason, urgent FROM cases ORDER BY id DESC LIMIT 1`);
     expect(c).toMatchObject({ reason: "danger_safety", urgent: true });
   });
