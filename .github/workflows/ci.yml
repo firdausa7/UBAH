@@ -14,7 +14,12 @@ jobs:
         with:
           node-version: 22
           cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            web/package-lock.json
       - run: npm ci
+      # npm test also runs the React app's tests, which need its own packages.
+      - run: npm ci --prefix web
       - run: npm run lint
       - run: npm run typecheck
       - run: npm test
@@ -40,7 +45,12 @@ jobs:
         with:
           node-version: 22
           cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            web/package-lock.json
       - run: npm ci
+      # npm test also runs the React app's tests, which need its own packages.
+      - run: npm ci --prefix web
       - run: npm test
 
   docker:
