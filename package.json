@@ -4,7 +4,8 @@
   "description": "Ubah: voice-first Somali SRH companion with closed-loop referrals",
   "main": "index.js",
   "scripts": {
-    "test": "vitest run && npm --prefix web test",
+    "test": "vitest run && npm run test:load && npm --prefix web test",
+    "test:load": "vitest run -c vitest.load.config.ts",
     "dev": "tsx watch --env-file-if-exists=.env src/server.ts",
     "start": "node --env-file-if-exists=.env --import tsx src/server.ts",
     "train": "tsx src/ml/trainCli.ts",
@@ -16,7 +17,7 @@
     "create-admin": "tsx src/createAdmin.ts",
     "lint": "oxlint --deny-warnings src test scripts",
     "check": "npm run lint && npm run typecheck && npm test",
-    "test:pg": "TEST_DATABASE_URL=${TEST_DATABASE_URL:-postgres://ubah@127.0.0.1:55432/ubah_test} vitest run",
+    "test:pg": "TEST_DATABASE_URL=${TEST_DATABASE_URL:-postgres://ubah@127.0.0.1:55432/ubah_test} sh -c 'vitest run && vitest run -c vitest.load.config.ts'",
     "import-content": "tsx src/importContent.ts",
     "eval:stt": "tsx src/ai/sttEval.ts",
     "eval:languages": "tsx --env-file-if-exists=.env scripts/eval-languages.ts",

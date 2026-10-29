@@ -1,7 +1,6 @@
 import { describe, it, expect, beforeAll, afterEach } from "vitest";
 import request from "supertest";
 import { readdirSync, readFileSync, existsSync } from "node:fs";
-import type { AddressInfo } from "node:net";
 import { freshDb, girl, staffClient, type StaffClient } from "./helpers.js";
 import { INVENTORY, routeExists } from "./inventory.js";
 import { createApp } from "../src/server.js";
@@ -12,7 +11,6 @@ import { mockWhatsAppSent } from "../src/channels/whatsapp.js";
 import { sendDueCheckins } from "../src/engine.js";
 import { remindUnansweredUrgent, opsStatus } from "../src/ops.js";
 import { loadDemo, wipeDemo, hasDemoData } from "../src/demo.js";
-import { runLoad } from "../src/tools/loadtest.js";
 import { refreshCaches } from "../src/caches.js";
 import { trainAll } from "../src/ml/train.js";
 import { reloadModels } from "../src/ml/models.js";
@@ -225,45 +223,6 @@ describe("monitoring and the urgent-case reminder", () => {
     await remindUnansweredUrgent(db);
     expect(count()).toBe(2); // answered: no more reminders
     expect((await nurse.get(`/staff/cases/${c.id}`)).text).toContain("No reply yet: nurses reminded");
-  });
-});
-
-describe("load", () => {
-  it("handles a burst of 300 new girls on WhatsApp: every request accepted, every girl answered", async () => {
-    const server = app.listen(0);
-    const port = (server.address() as AddressInfo).port;
-    try {
-      const r = await runLoad({ url: `http://127.0.0.1:${port}`, rate: 150, durationS: 2, kind: "whatsapp", senderPrefix: "2547991" });
-      expect(r.sent).toBe(300);
-      expect(r.ok).toBe(300);
-      expect(r.p95).toBeLessThan(1000); // the webhook answers at once; work continues after
-      // Every girl gets her welcome message.
-      let answered = 0;
-      for (let i = 0; i < 60 && answered < 300; i++) {
-        await settle(500);
-        answered = (await db.query<{ n: number }>(`SELECT count(DISTINCT to_hash)::int AS n FROM outbox WHERE channel = 'whatsapp' AND body LIKE 'Welcome to Ubah%' AND to_hash IN (SELECT phone_hash FROM users WHERE created_at > now() - interval '5 minutes')`))[0].n;
-      }
-      expect(answered).toBeGreaterThanOrEqual(300);
-    } finally {
-      server.close();
-    }
-  });
-
-  it("handles a burst on SMS too", async () => {
-    const server = app.listen(0);
-    const port = (server.address() as AddressInfo).port;
-    try {
-      const r = await runLoad({ url: `http://127.0.0.1:${port}`, rate: 100, durationS: 1, kind: "sms", senderPrefix: "2547992" });
-      expect(r.ok).toBe(100);
-      let handled = 0;
-      for (let i = 0; i < 60 && handled < 100; i++) {
-        await settle(500);
-        handled = (await db.query<{ n: number }>(`SELECT count(*)::int AS n FROM inbound_messages WHERE provider = 'sms' AND provider_id LIKE 'ATload-%' AND processed_at IS NOT NULL`))[0].n;
-      }
-      expect(handled).toBe(100);
-    } finally {
-      server.close();
-    }
   });
 });
 

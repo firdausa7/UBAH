@@ -143,7 +143,8 @@ No outside service writes health advice: answers come from approved content or f
 
 ## Tests
 
-- `npm test` runs the server tests (`test/`, vitest, against PGlite) and the web tests (`web/src`, jsdom):
+- `npm test` runs the server tests (`test/`, vitest, against PGlite), then the timed load tests on their own
+  (`test/load.test.ts`, `npm run test:load`), then the web tests (`web/src`, jsdom):
   engine, channels, roles and access, every route and link per role, safeguarding, wellbeing, offline
   queue, accessibility (axe) and colour contrast.
 - `npm run test:pg` runs the server tests against a real Postgres.
