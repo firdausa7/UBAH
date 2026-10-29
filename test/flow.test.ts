@@ -2,7 +2,7 @@ import { describe, it, expect, beforeAll, afterAll, afterEach, vi } from "vitest
 import request from "supertest";
 import { freshDb, girl, lastSmsCode, staffClient } from "./helpers.js";
 import { createApp } from "../src/server.js";
-import { handleIncoming } from "../src/engine.js";
+import { asksForPerson, handleIncoming } from "../src/engine.js";
 import { config } from "../src/config.js";
 import { languageConfig } from "../src/languages/index.js";
 import { hashPhone } from "../src/privacy.js";
@@ -16,6 +16,7 @@ const TO_EN: Record<string, string> = {
   "Waxaan rabaa inaan naftayda ka takhaluso": "I want to kill myself",
   "Hedhi yangu imechelewa": "My period is late",
   "Nina maswali kuhusu uzazi wa mpango": "I have a question about family planning",
+  "Waxaan rabaa inaan la hadlo qof": "I want to talk to someone",
 };
 const calls: Array<{ text: string; to: string; from: string | null }> = [];
 let failNext = false;
@@ -186,6 +187,28 @@ describe("girl → worker → girl", () => {
     await db.query(`UPDATE cases SET status = 'handled' WHERE user_id = $1`, [u.id]);
     await g.send("DADA");
     expect((await cases()).filter((c) => c.status === "open").map((c) => c.reason)).toEqual(["asked_for_person"]);
+  });
+
+  it("knows the ways she asks for a person, and doesn't mistake other sentences for it", () => {
+    for (const yes of ["I want to talk to someone", "can I speak with a nurse", "please let me talk to a real person", "I need to chat with somebody", "can I talk to a counselor", "talk to the doctor", "I want to speak to a health worker", "TALK TO A DADA"])
+      expect(asksForPerson(yes), yes).toBe(true);
+    for (const no of ["I can't talk to anyone", "should I talk to my mother", "my period is late", "they talk about me", "", null])
+      expect(asksForPerson(no), String(no)).toBe(false);
+  });
+
+  it("asking for a person in her own words reaches a Dada, in English and through the translation", async () => {
+    const en = girl(db, "0712600094");
+    await en.send("hi");
+    await en.send("3"); // English
+    expect(await en.send("i want to talk to someone")).toMatch(/A Dada will reply/);
+    const so = girl(db, "0712600095");
+    await so.send("hi");
+    await so.send("1"); // Soomaali
+    await so.send("Waxaan rabaa inaan la hadlo qof");
+    for (const phone of ["0712600094", "0712600095"]) {
+      const [c] = await db.query(`SELECT c.reason FROM cases c JOIN users u ON u.id = c.user_id WHERE u.phone_hash = $1`, [hashPhone(phone)]);
+      expect(c?.reason, phone).toBe("asked_for_person");
+    }
   });
 
   it("a girl with no worker who asks for a person waits in /worker until a Dada takes her", async () => {

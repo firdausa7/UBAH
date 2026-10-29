@@ -246,7 +246,12 @@ async function handleMessage(db: Db, msg: Incoming): Promise<void> {
 
   if (a.danger !== "none") return handleDanger(db, user, a, text);
 
-  if (cmd === "DADA" || /\b(talk to (a )?(dada|person|human|nurse))\b/i.test(text)) return requestDada(db, user, text);
+  // English answers are found through a real translation. Without one (no key, e.g. the online test
+  // version) her own words are used only if they look like English: the mock just labels her words,
+  // and Somali read as English goes wrong ("way" matched "ways to prevent pregnancy").
+  const realEnglish = meta.english?.ok && meta.english.provider !== "none" && meta.english.provider !== "mock" ? meta.english.text : null;
+
+  if (cmd === "DADA" || asksForPerson(text) || asksForPerson(realEnglish)) return requestDada(db, user, text);
 
   if (state.step === "after_answer" && /^[123]$/.test(text)) {
     if (text === "1") return findCare(db, user, state.lastServices ?? [], state);
@@ -260,10 +265,6 @@ async function handleMessage(db: Db, msg: Incoming): Promise<void> {
     return issueAndSend(db, user, picks);
   }
 
-  // English answers are found through a real translation. Without one (no key, e.g. the online test
-  // version) her own words are used only if they look like English: the mock just labels her words,
-  // and Somali read as English goes wrong ("way" matched "ways to prevent pregnancy").
-  const realEnglish = meta.english?.ok && meta.english.provider !== "none" && meta.english.provider !== "mock" ? meta.english.text : null;
   const searchEnglish = realEnglish ?? (looksEnglish(text) ? text : null);
   return answerQuestion(db, user, a, text, searchEnglish);
 }
@@ -399,6 +400,12 @@ async function suggestNearest(db: Db, user: UserRow, where: { lat: number; lng: 
   const lines = near.map((x) => t(user.language, "near_clinic", { clinic: x.clinic.name, area: x.clinic.area, hours: x.clinic.hours, km: x.km == null ? "?" : x.km < 1 ? "<1" : String(Math.round(x.km)) }));
   return reply(db, user, `${t(user.language, "near_intro")}\n${lines.join("\n")}`);
 }
+
+// "I want to talk to someone", "can I speak with a nurse": she wants a person, not an article. Read in
+// her words and in the English translation (so a request in Somali counts too). Erring this way is
+// safe: she reaches a Dada.
+const PERSON = /\b(talk|speak|chat)\s+(to|with)\s+(a\s+|an\s+|the\s+|some\s+)?(real\s+)?(dada|person|human|nurse|someone|somebody|doctor|counsell?or|health\s+worker)\b/i;
+export const asksForPerson = (text: string | null | undefined) => Boolean(text && PERSON.test(text));
 
 async function requestDada(db: Db, user: UserRow, text: string) {
   await shareOnRequest(db, user.id);
